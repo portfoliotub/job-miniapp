@@ -59,6 +59,7 @@
   .job-row-text { flex: 1; min-width: 0; }
   .job-row-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .job-row-sub { font-size: 13.5px; color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job-row-status { margin-top: 3px; }
   .job-row-side { flex-shrink: 0; text-align: left; align-self: flex-start; }
   .job-row-budget { font-size: 14px; font-weight: 700; color: var(--link); }
   .job-row-date { font-size: 12px; color: var(--hint); margin-top: 2px; }
@@ -96,7 +97,8 @@
   .badge {
     display: inline-block; font-size: 12px; border-radius: 999px; padding: 2px 9px;
   }
-  .badge.open, .badge.pending { background: #fff3cd; color: #7a5b00; }
+  .badge.open { background: #e6f4ea; color: #137333; }
+  .badge.pending { background: #fff3cd; color: #7a5b00; }
   .badge.accepted { background: #e6f4ea; color: #137333; }
   .badge.rejected { background: #fce8e6; color: #a50e0e; }
   .badge.closed { background: #e8eaed; color: #5f6368; }
@@ -228,6 +230,9 @@ const STATUS_LABEL = {
   open: "باز", closed: "بسته",
   pending: "در انتظار", accepted: "قبول شد", rejected: "رد شد"
 };
+const JOB_STATUS_LABEL = {
+  open: "باز", pending: "در انتظار تایید", closed: "بسته"
+};
 
 /* ================= environment ================= */
 const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
@@ -336,6 +341,10 @@ function emptyState(title, sub) {
 function statusBadge(status) {
   const cls = STATUS_LABEL[status] ? status : "pending";
   return '<span class="badge ' + cls + '">' + esc(STATUS_LABEL[status] || status) + "</span>";
+}
+function jobStatusBadge(status) {
+  const cls = JOB_STATUS_LABEL[status] ? status : "pending";
+  return '<span class="badge ' + cls + '">' + esc(JOB_STATUS_LABEL[status] || status) + "</span>";
 }
 function sampleLinks(samples) {
   const lines = String(samples || "").split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
@@ -455,7 +464,7 @@ function mockCreateJob(p) {
     title: p.title, category: p.category, budget: p.budget || "",
     deadline: p.deadline || "", work_type: p.work_type || "دورکاری", location: p.location || "",
     description: p.description || "",
-    status: "open", created_at: new Date().toISOString()
+    status: "pending", created_at: new Date().toISOString()
   };
   MOCK_JOBS.unshift(job);
   state.jobById[id] = job;
@@ -525,7 +534,7 @@ async function openJobDetail(jobId) {
     '<div><div class="card-title">' + esc(job.title) + '</div><div class="meta">' + esc(job.employer_name || "کارفرما") + " · " + fmtDate(job.created_at) + "</div></div></div>" +
     '<div class="meta-row"><span class="chip">' + esc(job.category) + "</span>" +
     (job.work_type ? '<span class="chip">' + esc(job.work_type) + (job.location ? " — " + esc(job.location) : "") + "</span>" : "") +
-    statusBadge(job.status) + "</div>" +
+    jobStatusBadge(job.status) + "</div>" +
     ((job.budget || job.deadline) ? '<div class="stats">' +
       (job.budget ? '<div class="stat"><div class="stat-label">بودجه</div><div class="stat-value">' + esc(job.budget) + "</div></div>" : "") +
       (job.deadline ? '<div class="stat"><div class="stat-label">ددلاین</div><div class="stat-value">' + esc(job.deadline) + "</div></div>" : "") +
@@ -658,7 +667,7 @@ function submitPostJob(ev) {
   if (!payload.title) { showToast("عنوان آگهی را وارد کنید"); return; }
   if (workType === "حضوری" && !location) { showToast("منطقه را مشخص کنید"); return; }
   sendToBot(payload, function () { mockCreateJob(payload); });
-  if (MOCK) { loadJobs().then(function () { state.view = { name: "jobs" }; state.tab = "jobs"; render(); }); }
+  if (MOCK) { loadMyJobs().then(function () { state.view = { name: "my-jobs" }; state.tab = "my-jobs"; render(); }); }
 }
 
 function renderMyApplications() {
@@ -696,7 +705,8 @@ function renderMyJobs() {
         avatarHtml(job.title) +
         '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
         '<div class="job-row-sub">' + esc(job.category) +
-        (job.budget ? " · " + esc(job.budget) : "") + "</div></div>" +
+        (job.budget ? " · " + esc(job.budget) : "") + "</div>" +
+        '<div class="job-row-status">' + jobStatusBadge(job.status) + "</div></div>" +
         '<div class="job-row-side">' +
         '<div class="job-row-budget">' + n + " درخواست</div>" +
         '<div class="job-row-date">' + fmtDate(job.created_at) + "</div></div>" +
@@ -729,6 +739,10 @@ function renderJobApplications() {
   const apps = state.jobApplications[jobId] || [];
   let html = '<button class="back" data-back>› بازگشت</button>' +
     "<h2>درخواست‌ها" + (job ? " — " + esc(job.title) : "") + "</h2>";
+  if (job && job.status === "pending") {
+    html += '<div class="card"><div class="muted">این آگهی هنوز منتشر نشده و توی لیست کارها دیده نمی‌شه.</div>' +
+      '<button type="button" class="btn" data-approve-job="' + job.id + '">تایید و انتشار ✓</button></div>';
+  }
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
   if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
   if (!apps.length) {
@@ -759,11 +773,25 @@ function renderJobApplications() {
   viewEl().querySelectorAll("[data-reject]").forEach(function (el) {
     el.addEventListener("click", function () { setAppStatus(parseInt(el.getAttribute("data-reject"), 10), "rejected"); });
   });
+  viewEl().querySelectorAll("[data-approve-job]").forEach(function (el) {
+    el.addEventListener("click", function () { setJobStatus(parseInt(el.getAttribute("data-approve-job"), 10), "open"); });
+  });
 }
 function setAppStatus(appId, status) {
   const payload = { type: "set_application_status", application_id: appId, status: status };
   sendToBot(payload, function () { mockSetStatus(payload); });
   if (MOCK) render();
+}
+function setJobStatus(jobId, status) {
+  const payload = { type: "set_job_status", job_id: jobId, status: status };
+  sendToBot(payload, function () { mockSetJobStatus(payload); });
+  if (MOCK) render();
+}
+function mockSetJobStatus(p) {
+  [MOCK_JOBS, state.myJobs].forEach(function (list) {
+    list.forEach(function (j) { if (j.id === p.job_id) j.status = p.status; });
+  });
+  if (state.jobById[p.job_id]) state.jobById[p.job_id].status = p.status;
 }
 
 function bindBack(tab) {
