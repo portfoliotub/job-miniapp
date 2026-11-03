@@ -51,6 +51,16 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   }
   .job-row:active { background: var(--secondary-bg); }
+  .pending-head { font-size: 15px; font-weight: 700; margin: 2px 14px 2px; }
+  .pending-row {
+    display: flex; gap: 12px; align-items: center;
+    padding: 11px 12px;
+    background: var(--bg);
+    border-radius: 16px;
+    margin: 8px 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .btn-small { padding: 8px 14px; font-size: 14px; margin: 0; flex-shrink: 0; }
   .avatar {
     width: 46px; height: 46px; border-radius: 50%;
     color: #fff; font-size: 19px; font-weight: 700;
@@ -268,6 +278,10 @@ function me() {
   // Preview identity in mock mode.
   return { id: 111111, name: "کالی", username: "kali_tub" };
 }
+/* Admin (Kali) approves other employers' ads. In preview mode the mock user
+   is Kali, so the admin UI shows there too. */
+const ADMIN_ID = 1335115151;
+function isAdmin() { return MOCK || (me() && me().id === ADMIN_ID); }
 
 /* ================= mock data (preview only) ================= */
 const MOCK_JOBS = [
@@ -275,7 +289,8 @@ const MOCK_JOBS = [
   { id: 2, employer_id: 333, employer_name: "سارا", title: "طراح تامنیل برای کانال گیمینگ", category: "تامنیل", budget: "$40", deadline: "2026-11-08", work_type: "حضوری", location: "تهران", description: "تامنیل برای ویدیوی ماینکرفت؛ سبک مینیمال و سینمایی، حداکثر ۳ المان.", status: "open", created_at: "2026-11-02T15:30:00Z" },
   { id: 3, employer_id: 111111, employer_name: "کالی", title: "اسکریپت‌نویس برای ویدیوی مستند کوتاه", category: "اسکریپت", budget: "$80", deadline: "2026-11-15", work_type: "دورکاری", description: "اسکریپت ۸ دقیقه‌ای درباره تاریخ زیپ؛ لحن داستانی و جذاب.", status: "open", created_at: "2026-11-02T10:00:00Z" },
   { id: 4, employer_id: 444, employer_name: "مهدی", title: "ادیتور شورت ویدیو (عمودی)", category: "ادیت ویدیو", budget: "$25", deadline: "2026-11-07", work_type: "دورکاری", description: "هر هفته ۳ شورت ۳۰ ثانیه‌ای از ویدیوی بلند؛ کپشن و ساندافکت.", status: "open", created_at: "2026-11-01T18:20:00Z" },
-  { id: 5, employer_id: 555, employer_name: "نگار", title: "تامنیل برای ویدیوی ولاگ سفر", category: "تامنیل", budget: "$60", deadline: "2026-11-12", work_type: "دورکاری", description: "ولاگ سفر به شمال؛ تامنیل گرم و رنگی با چهره.", status: "open", created_at: "2026-10-31T09:45:00Z" }
+  { id: 5, employer_id: 555, employer_name: "نگار", title: "تامنیل برای ویدیوی ولاگ سفر", category: "تامنیل", budget: "$60", deadline: "2026-11-12", work_type: "دورکاری", description: "ولاگ سفر به شمال؛ تامنیل گرم و رنگی با چهره.", status: "open", created_at: "2026-10-31T09:45:00Z" },
+  { id: 6, employer_id: 777, employer_name: "مریم", title: "ادیتور ویدیو برای کانال آشپزی", category: "ادیت ویدیو", budget: "$120", deadline: "2026-11-14", work_type: "دورکاری", description: "ویدیوی ۱۰ دقیقه‌ای آشپزی؛ ریتم آرام و تمیز.", status: "pending", created_at: "2026-11-03T10:00:00Z" }
 ];
 const MOCK_APPS = [
   { id: 101, job_id: 3, freelancer_id: 777, freelancer_name: "مریم", samples: "https://drive.google.com/drive/folders/example1\nhttps://youtu.be/example1", price: "$70", message: "سلام! دو سال اسکریپت مستند می‌نویسم؛ نمونه‌ها رو ببینید.", status: "pending", created_at: "2026-11-03T09:10:00Z" },
@@ -289,6 +304,7 @@ const state = {
   tab: "jobs",
   view: { name: "jobs" }, // jobs | job-detail | post | my-apps | my-jobs | job-apps
   jobs: [],
+  pendingJobs: [], // admin-only moderation queue (status pending)
   myApplications: [],
   myJobs: [],
   jobApplications: {}, // jobId -> [applications]
@@ -379,6 +395,8 @@ async function loadJobs() {
   if (MOCK) {
     state.jobs = MOCK_JOBS.filter(function (j) { return j.status === "open"; })
       .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+    state.pendingJobs = MOCK_JOBS.filter(function (j) { return j.status === "pending"; })
+      .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
     state.jobById = {};
     MOCK_JOBS.forEach(function (j) { state.jobById[j.id] = j; });
     return;
@@ -389,6 +407,15 @@ async function loadJobs() {
   state.jobs = res.data || [];
   state.jobById = {};
   state.jobs.forEach(function (j) { state.jobById[j.id] = j; });
+  state.pendingJobs = [];
+  if (isAdmin()) {
+    const pr = await supabaseClient.from("jobs").select("*")
+      .eq("status", "pending").order("created_at", { ascending: false });
+    if (!pr.error && pr.data) {
+      state.pendingJobs = pr.data;
+      pr.data.forEach(function (j) { state.jobById[j.id] = j; });
+    }
+  }
 }
 async function loadMyApplications() {
   const myId = me().id;
@@ -507,6 +534,17 @@ function renderJobs() {
   let html = "<h2>کارهای باز</h2>";
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
   if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
+  if (isAdmin() && state.pendingJobs.length) {
+    html += '<div class="pending-head">در انتظار تایید (' + state.pendingJobs.length + ")</div>" +
+      state.pendingJobs.map(function (job) {
+        return '<div class="pending-row">' +
+          avatarHtml(job.title) +
+          '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
+          '<div class="job-row-sub">' + esc(job.employer_name || "کارفرما") + " · " + esc(job.category) + "</div></div>" +
+          '<button type="button" class="btn btn-small" data-approve-job="' + job.id + '">تایید ✓</button>' +
+          "</div>";
+      }).join("");
+  }
   if (!state.jobs.length) {
     html += emptyState("هنوز آگهی بازی نیست", "اولین آگهی را از تب «ثبت آگهی» بسازید.");
   } else {
@@ -515,6 +553,9 @@ function renderJobs() {
   viewEl().innerHTML = html;
   viewEl().querySelectorAll("[data-job-id]").forEach(function (el) {
     el.addEventListener("click", function () { openJobDetail(parseInt(el.getAttribute("data-job-id"), 10)); });
+  });
+  viewEl().querySelectorAll("[data-approve-job]").forEach(function (el) {
+    el.addEventListener("click", function () { setJobStatus(parseInt(el.getAttribute("data-approve-job"), 10), "open"); });
   });
 }
 
@@ -741,7 +782,7 @@ function renderJobApplications() {
     "<h2>درخواست‌ها" + (job ? " — " + esc(job.title) : "") + "</h2>";
   if (job && job.status === "pending") {
     html += '<div class="card"><div class="muted">این آگهی هنوز منتشر نشده و توی لیست کارها دیده نمی‌شه.</div>' +
-      '<button type="button" class="btn" data-approve-job="' + job.id + '">تایید و انتشار ✓</button></div>';
+      (isAdmin() ? '<button type="button" class="btn" data-approve-job="' + job.id + '">تایید و انتشار ✓</button>' : "") + "</div>";
   }
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
   if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
@@ -785,7 +826,7 @@ function setAppStatus(appId, status) {
 function setJobStatus(jobId, status) {
   const payload = { type: "set_job_status", job_id: jobId, status: status };
   sendToBot(payload, function () { mockSetJobStatus(payload); });
-  if (MOCK) render();
+  if (MOCK) { loadJobs().then(function () { render(); }); }
 }
 function mockSetJobStatus(p) {
   [MOCK_JOBS, state.myJobs].forEach(function (list) {
