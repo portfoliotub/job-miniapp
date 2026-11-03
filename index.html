@@ -214,7 +214,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v15</span>
+<span class="app-version" id="app-version">v16</span>
 <main id="view"></main>
 <nav id="tabs">
   <button data-tab="jobs"><span class="ico tile-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>کارها</button>
@@ -424,6 +424,44 @@ async function sbSelect(table, params) {
   }
   return r.json();
 }
+async function sbInsert(table, row) {
+  // Direct write with the anon key — the channel that demonstrably works
+  // on the user's phone (reads already use it). RLS only allows inserting
+  // rows with status 'pending', so nothing can go public without the admin.
+  const r = await fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + table, {
+    method: "POST",
+    headers: {
+      "apikey": CONFIG.SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + CONFIG.SUPABASE_ANON_KEY,
+      "Content-Type": "application/json",
+      "Prefer": "return=representation"
+    },
+    body: JSON.stringify(row)
+  });
+  if (!r.ok) {
+    let t = "";
+    try { t = await r.text(); } catch (e) {}
+    throw new Error("Supabase " + r.status + " " + t.slice(0, 120));
+  }
+  const rows = await r.json();
+  return rows && rows[0];
+}
+// Best-effort Telegram send: hands the payload to Telegram (sendData or
+// the native bridge). Returns true if the call did not throw. Never
+// throws, never blocks — the direct Supabase write is the primary path.
+function sendViaTelegram(payload) {
+  var data = JSON.stringify(payload);
+  if (tg && tg.sendData && tgUser) {
+    try { tg.sendData(data); return true; } catch (e) {}
+  }
+  if (tgUser && window.TelegramWebviewProxy && window.TelegramWebviewProxy.postEvent) {
+    try {
+      window.TelegramWebviewProxy.postEvent("web_app_data_send", JSON.stringify({data: data}));
+      return true;
+    } catch (e) {}
+  }
+  return false;
+}
 async function loadJobs() {
   if (MOCK) {
     state.jobs = MOCK_JOBS.filter(function (j) { return j.status === "open"; })
@@ -494,39 +532,14 @@ async function findJob(jobId) {
 
 /* ================= writes: ONLY via Telegram sendData ================= */
 function sendToBot(payload, mockApply) {
-  // Real Telegram user only: sendData delivers to the bot. The check must
-  // not depend on Supabase — reads and writes are independent, so a failed
-  // database read must never swallow a post.
-  var data = JSON.stringify(payload);
-  if (tg && tg.sendData && tgUser) {
-    try {
-      // In Telegram this sends the data to the bot and closes the Mini App.
-      tg.sendData(data);
-      showToast("فرستاده شد ✓");
-      return;
-    } catch (e) {
-      // sendData throws e.g. when the data exceeds Telegram's 4096-byte
-      // limit — fall through to the bridge instead of dying silently.
-    }
-  }
-  // Fallback: Telegram's own Android bridge. When telegram-web-app.js fails
-  // to load on a slow connection, window.Telegram is missing but the native
-  // bridge is still there — send the exact event the library sends
-  // (web_app_data_send). tgUser from the launch URL proves this is a real
-  // WebApp launch, not a plain browser.
-  if (tgUser && window.TelegramWebviewProxy && window.TelegramWebviewProxy.postEvent) {
-    try {
-      window.TelegramWebviewProxy.postEvent("web_app_data_send", JSON.stringify({data: data}));
-      showToast("فرستاده شد ✓");
-      return;
-    } catch (e) {}
+  // Telegram path (approve/accept — the bot must verify those, so they
+  // stay on sendData). Never throws; reports failure visibly.
+  if (sendViaTelegram(payload)) {
+    showToast("فرستاده شد ✓");
+    return;
   }
   if (tgUser) {
-    // Real user, but neither send path worked — say so out loud instead of
-    // silently doing nothing, so the failure can be diagnosed.
-    var tooBig = false;
-    try { tooBig = new TextEncoder().encode(data).length > 4096; } catch (e) { tooBig = data.length > 4096; }
-    showToast(tooBig ? "متن آگهی خیلی طولانیه، کوتاهش کن" : "ارسال نشد — دوباره امتحان کن");
+    showToast("ارسال نشد — دوباره امتحان کن");
     return;
   }
   // Preview only: apply locally so the screens reflect the change.
@@ -656,7 +669,7 @@ async function openJobDetail(jobId) {
   renderTabs();
 }
 
-function submitApply(ev, jobId) {
+async function submitApply(ev, jobId) {
   ev.preventDefault();
   const payload = {
     type: "apply",
@@ -669,8 +682,31 @@ function submitApply(ev, jobId) {
     showToast("لینک نمونه‌کار و قیمت را وارد کنید");
     return;
   }
-  sendToBot(payload, function () { mockApply(payload); });
-  if (MOCK) { loadMyApplications().then(function () { state.view = { name: "my-apps" }; state.tab = "my-apps"; render(); }); }
+  if (MOCK) {
+    mockApply(payload);
+    showToast("فرستاده شد ✓ (حالت پیش‌نمایش)");
+    await loadMyApplications();
+    state.view = { name: "my-apps" }; state.tab = "my-apps"; render();
+    return;
+  }
+  // Primary channel: direct Supabase write (same reasoning as posting).
+  try {
+    const row = await sbInsert("applications", {
+      job_id: jobId, freelancer_id: me().id, freelancer_name: me().name,
+      samples: payload.samples, price: payload.price, message: payload.message,
+      status: "pending"
+    });
+    sendViaTelegram({ type: "notify_application_posted", job_id: jobId, application_id: row && row.id });
+    showToast("درخواست فرستاده شد ✓");
+    await loadMyApplications();
+    state.view = { name: "my-apps" }; state.tab = "my-apps"; render();
+    return;
+  } catch (e) {}
+  if (sendViaTelegram(payload)) {
+    showToast("فرستاده شد ✓");
+    return;
+  }
+  showToast("ارسال نشد — دوباره امتحان کن");
 }
 
 /* Custom bottom-sheet picker: same look for every dropdown, no OS popup. */
@@ -740,7 +776,7 @@ function renderPost() {
     document.getElementById("p-location-wrap").hidden = v !== "حضوری";
   });
 }
-function submitPostJob(ev) {
+async function submitPostJob(ev) {
   ev.preventDefault();
   const workType = document.getElementById("p-work-type").getAttribute("data-value");
   const location = document.getElementById("p-location").value.trim();
@@ -758,8 +794,38 @@ function submitPostJob(ev) {
   if (!payload.budget) { showToast("بودجه را وارد کنید"); return; }
   if (workType === "حضوری" && !location) { showToast("منطقه را مشخص کنید"); return; }
   if (!payload.description) { showToast("توضیحات آگهی را وارد کنید"); return; }
-  sendToBot(payload, function () { mockCreateJob(payload); });
-  if (MOCK) { loadMyJobs().then(function () { state.view = { name: "my-jobs" }; state.tab = "my-jobs"; render(); }); }
+  if (MOCK) {
+    mockCreateJob(payload);
+    showToast("فرستاده شد ✓ (حالت پیش‌نمایش)");
+    await loadMyJobs();
+    state.view = { name: "my-jobs" }; state.tab = "my-jobs"; render();
+    return;
+  }
+  // Primary channel: write directly to Supabase (the same HTTPS channel
+  // the reads already use). This works even when Telegram's sendData is a
+  // no-op — e.g. the app was opened from the menu button instead of /start.
+  try {
+    const row = await sbInsert("jobs", {
+      employer_id: me().id, employer_name: me().name,
+      title: payload.title, category: payload.category, budget: payload.budget,
+      deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
+      description: payload.description, status: "pending"
+    });
+    // Best-effort: tell the bot so the admin is notified instantly.
+    // If Telegram's send is broken, the bot's periodic check picks it up.
+    sendViaTelegram({ type: "notify_job_posted", job_id: row && row.id, title: payload.title });
+    showToast("آگهی ثبت شد ✓");
+    await loadMyJobs();
+    state.view = { name: "my-jobs" }; state.tab = "my-jobs"; render();
+    return;
+  } catch (e) {}
+  // Fallback: the old Telegram path (works when the app was opened from
+  // the /start button and sendData is live).
+  if (sendViaTelegram(payload)) {
+    showToast("فرستاده شد ✓");
+    return;
+  }
+  showToast("ارسال نشد — دوباره امتحان کن");
 }
 
 function renderMyApplications() {
@@ -948,11 +1014,18 @@ document.querySelectorAll("#tabs button").forEach(function (btn) {
   const u = me();
   document.getElementById("mock-badge").hidden = !MOCK;
   // Diagnostics line (readable on the phone): version, real/preview mode,
-  // whether the Telegram library and the native bridge are present, user id.
+  // whether the Telegram library and the native bridge are present, whether
+  // the launch carries a query_id (only /start-button launches do), user id.
+  var hasQid = false;
+  try {
+    hasQid = !!(tg && tg.initDataUnsafe && tg.initDataUnsafe.query_id) ||
+      (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
+  } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v15 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v16 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
+    " qid:" + (hasQid ? "✓" : "✗") +
     " uid:" + (tgUser ? tgUser.id : "-");
   if (tg) {
     try {
