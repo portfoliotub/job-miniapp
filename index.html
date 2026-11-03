@@ -474,7 +474,10 @@ async function findJob(jobId) {
 
 /* ================= writes: ONLY via Telegram sendData ================= */
 function sendToBot(payload, mockApply) {
-  if (tg && tg.sendData) {
+  // Real Telegram only: initData carries a real user, so MOCK is false.
+  // In a plain browser the Telegram script still loads (tg.sendData exists)
+  // but there is no user and sendData goes nowhere — use the local mock.
+  if (!MOCK && tg && tg.sendData) {
     // In Telegram this sends the data to the bot and closes the Mini App.
     tg.sendData(JSON.stringify(payload));
     showToast("فرستاده شد ✓");
