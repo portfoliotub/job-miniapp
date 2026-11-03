@@ -38,8 +38,9 @@
     box-shadow: 0 1px 4px rgba(0,0,0,0.15); white-space: nowrap;
   }
   .app-version {
-    position: fixed; bottom: 66px; right: 10px; z-index: 30;
+    position: fixed; bottom: 66px; left: 10px; right: 10px; z-index: 30;
     font-size: 10px; color: #9aa0a6; pointer-events: none;
+    text-align: right; white-space: nowrap; overflow: hidden;
   }
   main { padding: 0 0 86px; max-width: 640px; margin: 0 auto; }
   h2 { font-size: 13px; font-weight: 600; color: var(--hint); margin: 0; padding: 16px 16px 6px; }
@@ -213,7 +214,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v14</span>
+<span class="app-version" id="app-version">v15</span>
 <main id="view"></main>
 <nav id="tabs">
   <button data-tab="jobs"><span class="ico tile-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>کارها</button>
@@ -498,10 +499,15 @@ function sendToBot(payload, mockApply) {
   // database read must never swallow a post.
   var data = JSON.stringify(payload);
   if (tg && tg.sendData && tgUser) {
-    // In Telegram this sends the data to the bot and closes the Mini App.
-    tg.sendData(data);
-    showToast("فرستاده شد ✓");
-    return;
+    try {
+      // In Telegram this sends the data to the bot and closes the Mini App.
+      tg.sendData(data);
+      showToast("فرستاده شد ✓");
+      return;
+    } catch (e) {
+      // sendData throws e.g. when the data exceeds Telegram's 4096-byte
+      // limit — fall through to the bridge instead of dying silently.
+    }
   }
   // Fallback: Telegram's own Android bridge. When telegram-web-app.js fails
   // to load on a slow connection, window.Telegram is missing but the native
@@ -514,6 +520,14 @@ function sendToBot(payload, mockApply) {
       showToast("فرستاده شد ✓");
       return;
     } catch (e) {}
+  }
+  if (tgUser) {
+    // Real user, but neither send path worked — say so out loud instead of
+    // silently doing nothing, so the failure can be diagnosed.
+    var tooBig = false;
+    try { tooBig = new TextEncoder().encode(data).length > 4096; } catch (e) { tooBig = data.length > 4096; }
+    showToast(tooBig ? "متن آگهی خیلی طولانیه، کوتاهش کن" : "ارسال نشد — دوباره امتحان کن");
+    return;
   }
   // Preview only: apply locally so the screens reflect the change.
   if (mockApply) mockApply();
@@ -933,6 +947,13 @@ document.querySelectorAll("#tabs button").forEach(function (btn) {
 (function init() {
   const u = me();
   document.getElementById("mock-badge").hidden = !MOCK;
+  // Diagnostics line (readable on the phone): version, real/preview mode,
+  // whether the Telegram library and the native bridge are present, user id.
+  document.getElementById("app-version").textContent =
+    "v15 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    " · tg:" + (tg ? "✓" : "✗") +
+    " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
+    " uid:" + (tgUser ? tgUser.id : "-");
   if (tg) {
     try {
       tg.ready(); tg.expand();
