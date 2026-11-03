@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>کاریابی یوتیوب</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --text: var(--tg-theme-text-color, #111111);
+    --hint: var(--tg-theme-hint-color, #707579);
+    --link: var(--tg-theme-link-color, #2481cc);
+    --button: var(--tg-theme-button-color, #2481cc);
+    --button-text: var(--tg-theme-button-text-color, #ffffff);
+    --secondary-bg: var(--tg-theme-secondary-bg-color, #f4f4f5);
+    --separator: var(--tg-theme-section-separator-color, #e2e2e2);
+    --destructive: var(--tg-theme-destructive-text-color, #cc2929);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Tahoma, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-tap-highlight-color: transparent;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--bg);
+    border-bottom: 1px solid var(--separator);
+    padding: 12px 16px 10px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  .user-chip {
+    font-size: 13px; color: var(--hint);
+    background: var(--secondary-bg);
+    border-radius: 999px; padding: 3px 10px;
+    max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mock-badge {
+    font-size: 11px; color: #7a5b00; background: #fff3cd;
+    border-radius: 999px; padding: 2px 8px;
+  }
+  main { padding: 14px 14px 86px; max-width: 640px; margin: 0 auto; }
+  h2 { font-size: 17px; margin: 4px 0 12px; }
+  .muted { color: var(--hint); font-size: 13px; }
+  .card {
+    background: var(--secondary-bg);
+    border: 1px solid var(--separator);
+    border-radius: 14px;
+    padding: 13px 14px;
+    margin-bottom: 10px;
+  }
+  .card.clickable { cursor: pointer; }
+  .card-title { font-weight: 700; font-size: 15.5px; margin-bottom: 6px; }
+  .meta-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+  .chip {
+    display: inline-block; font-size: 12px;
+    background: #e7f0fa; color: #1967d2;
+    background: color-mix(in srgb, var(--link) 12%, transparent);
+    color: var(--link);
+    border-radius: 999px; padding: 2px 9px;
+  }
+  .meta { font-size: 13px; color: var(--hint); }
+  .desc { font-size: 14px; margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; }
+  .badge {
+    display: inline-block; font-size: 12px; border-radius: 999px; padding: 2px 9px;
+  }
+  .badge.open, .badge.pending { background: #fff3cd; color: #7a5b00; }
+  .badge.accepted { background: #e6f4ea; color: #137333; }
+  .badge.rejected { background: #fce8e6; color: #a50e0e; }
+  .badge.closed { background: #e8eaed; color: #5f6368; }
+  label { display: block; font-size: 13.5px; font-weight: 600; margin: 12px 0 4px; }
+  input, select, textarea {
+    width: 100%; padding: 10px 12px; font: inherit; font-size: 15px;
+    color: var(--text); background: var(--bg);
+    border: 1px solid var(--separator); border-radius: 10px;
+    outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--link); }
+  textarea { min-height: 84px; resize: vertical; }
+  .btn {
+    display: block; width: 100%; padding: 12px; margin-top: 16px;
+    font: inherit; font-size: 15.5px; font-weight: 700;
+    color: var(--button-text); background: var(--button);
+    border: none; border-radius: 12px; cursor: pointer;
+  }
+  .btn:active { opacity: 0.85; }
+  .btn-ghost {
+    background: var(--secondary-bg); color: var(--link);
+    border: 1px solid var(--separator);
+  }
+  .btn-danger { background: transparent; color: var(--destructive); border: 1px solid var(--separator); }
+  .row-btns { display: flex; gap: 8px; margin-top: 12px; }
+  .row-btns .btn { margin-top: 0; }
+  .back { background: none; border: none; color: var(--link); font: inherit; font-size: 15px; cursor: pointer; padding: 0 0 8px; }
+  .sample-link { display: block; color: var(--link); text-decoration: none; font-size: 13.5px; word-break: break-all; }
+  .empty { text-align: center; color: var(--hint); padding: 34px 10px; }
+  .loading { text-align: center; color: var(--hint); padding: 30px 10px; }
+  .error { color: var(--destructive); font-size: 13.5px; padding: 10px 0; }
+  nav#tabs {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+    display: flex; background: var(--bg);
+    border-top: 1px solid var(--separator);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  }
+  nav#tabs button {
+    flex: 1; background: none; border: none; cursor: pointer;
+    color: var(--hint); font: inherit; font-size: 11.5px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 4px 0;
+  }
+  nav#tabs button .ico { font-size: 20px; line-height: 1; }
+  nav#tabs button.active { color: var(--link); font-weight: 700; }
+  #toast {
+    position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%) translateY(8px);
+    background: #222; color: #fff; font-size: 14px;
+    padding: 9px 16px; border-radius: 999px; opacity: 0; pointer-events: none;
+    transition: opacity .25s, transform .25s; z-index: 50; max-width: 90vw; text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 کاریابی یوتیوب</h1>
+  <span class="user-chip" id="user-chip"></span>
+  <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
+</header>
+<main id="view"></main>
+<nav id="tabs">
+  <button data-tab="jobs"><span class="ico">📋</span>کارها</button>
+  <button data-tab="post"><span class="ico">➕</span>ثبت آگهی</button>
+  <button data-tab="my-apps"><span class="ico">📨</span>درخواست‌های من</button>
+  <button data-tab="my-jobs"><span class="ico">💼</span>آگهی‌های من</button>
+</nav>
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+/* ================= CONFIG =================
+   Supabase project credentials — the owner pastes their own values here.
+   Reads use the anon key (SELECT only). All writes go through the
+   Telegram bot via Telegram.WebApp.sendData, never directly to Supabase. */
+const CONFIG = {
+  SUPABASE_URL: "https://ohgocudnifnjqbtuivic.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oZ29jdWRuaWZuanFidHVpdmljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2OTY0OTcsImV4cCI6MjEwOTI3MjQ5N30.3loxkxf6kQy2CcOF0CugHbgG-w5dcpIOio7YN-xrcd4"
+};
+
+/* ================= constants ================= */
+const CATEGORIES = ["تامنیل", "ادیت ویدیو", "اسکریپت", "سایر"];
+const STATUS_LABEL = {
+  open: "باز", closed: "بسته",
+  pending: "در انتظار", accepted: "قبول شد", rejected: "رد شد"
+};
+
+/* ================= environment ================= */
+const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+const tgUser = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : null;
+
+// Mock mode when opened outside Telegram (plain browser preview) or when
+// Supabase is not configured yet — reads come from sample data below.
+const supabaseConfigured =
+  typeof CONFIG.SUPABASE_URL === "string" &&
+  CONFIG.SUPABASE_URL.indexOf("http") === 0 &&
+  CONFIG.SUPABASE_URL.indexOf("PASTE_") !== 0 &&
+  typeof CONFIG.SUPABASE_ANON_KEY === "string" &&
+  CONFIG.SUPABASE_ANON_KEY.indexOf("PASTE_") !== 0;
+
+let supabaseClient = null;
+if (supabaseConfigured && window.supabase && window.supabase.createClient) {
+  try {
+    supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  } catch (e) {
+    supabaseClient = null;
+  }
+}
+const MOCK = !tgUser || !supabaseClient;
+
+function me() {
+  if (tgUser) {
+    return {
+      id: tgUser.id,
+      name: [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") || "کاربر",
+      username: tgUser.username || ""
+    };
+  }
+  // Preview identity in mock mode.
+  return { id: 111111, name: "کالی", username: "kali_tub" };
+}
+
+/* ================= mock data (preview only) ================= */
+const MOCK_JOBS = [
+  { id: 1, employer_id: 222, employer_name: "آرش", title: "ادیتور ویدیوی چالش برای کانال ۲۰۰هزاری", category: "ادیت ویدیو", budget: "$150", deadline: "2026-11-10", description: "ویدیوی ۱۵ دقیقه‌ای چالش با ریتم تند، زوم و افکت‌های خنده‌دار. فایل خام و رفرنس می‌فرستم؛ تحویل ۳ روزه.", status: "open", created_at: "2026-11-03T08:00:00Z" },
+  { id: 2, employer_id: 333, employer_name: "سارا", title: "طراح تامنیل برای کانال گیمینگ", category: "تامنیل", budget: "$40", deadline: "2026-11-08", description: "تامنیل برای ویدیوی ماینکرفت؛ سبک مینیمال و سینمایی، حداکثر ۳ المان.", status: "open", created_at: "2026-11-02T15:30:00Z" },
+  { id: 3, employer_id: 111111, employer_name: "کالی", title: "اسکریپت‌نویس برای ویدیوی مستند کوتاه", category: "اسکریپت", budget: "$80", deadline: "2026-11-15", description: "اسکریپت ۸ دقیقه‌ای درباره تاریخ زیپ؛ لحن داستانی و جذاب.", status: "open", created_at: "2026-11-02T10:00:00Z" },
+  { id: 4, employer_id: 444, employer_name: "مهدی", title: "ادیتور شورت ویدیو (عمودی)", category: "ادیت ویدیو", budget: "$25", deadline: "2026-11-07", description: "هر هفته ۳ شورت ۳۰ ثانیه‌ای از ویدیوی بلند؛ کپشن و ساندافکت.", status: "open", created_at: "2026-11-01T18:20:00Z" },
+  { id: 5, employer_id: 555, employer_name: "نگار", title: "تامنیل برای ویدیوی ولاگ سفر", category: "تامنیل", budget: "$60", deadline: "2026-11-12", description: "ولاگ سفر به شمال؛ تامنیل گرم و رنگی با چهره.", status: "open", created_at: "2026-10-31T09:45:00Z" }
+];
+const MOCK_APPS = [
+  { id: 101, job_id: 3, freelancer_id: 777, freelancer_name: "مریم", samples: "https://drive.google.com/drive/folders/example1\nhttps://youtu.be/example1", price: "$70", message: "سلام! دو سال اسکریپت مستند می‌نویسم؛ نمونه‌ها رو ببینید.", status: "pending", created_at: "2026-11-03T09:10:00Z" },
+  { id: 102, job_id: 3, freelancer_id: 888, freelancer_name: "امیر", samples: "https://drive.google.com/drive/folders/example2", price: "$90", message: "اسکریپت‌نویس کانال‌های آموزشی؛ تحویل ۲ روزه.", status: "pending", created_at: "2026-11-03T07:40:00Z" },
+  { id: 103, job_id: 1, freelancer_id: 111111, freelancer_name: "کالی", samples: "https://portfoliotub.github.io", price: "$140", message: "۵ سال ادیت چالش؛ نمونه‌هام توی پورتفولیو هست.", status: "pending", created_at: "2026-11-03T08:30:00Z" },
+  { id: 104, job_id: 2, freelancer_id: 111111, freelancer_name: "کالی", samples: "https://portfoliotub.github.io", price: "$35", message: "تامنیل گیمینگ زیاد کار کردم.", status: "accepted", created_at: "2026-11-02T16:00:00Z" }
+];
+
+/* ================= state ================= */
+const state = {
+  tab: "jobs",
+  view: { name: "jobs" }, // jobs | job-detail | post | my-apps | my-jobs | job-apps
+  jobs: [],
+  myApplications: [],
+  myJobs: [],
+  jobApplications: {}, // jobId -> [applications]
+  jobById: {},
+  loading: false,
+  error: ""
+};
+
+/* ================= helpers ================= */
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function fmtDate(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    return d.toLocaleDateString("fa-IR");
+  } catch (e) {
+    return String(iso);
+  }
+}
+function statusBadge(status) {
+  const cls = STATUS_LABEL[status] ? status : "pending";
+  return '<span class="badge ' + cls + '">' + esc(STATUS_LABEL[status] || status) + "</span>";
+}
+function sampleLinks(samples) {
+  const lines = String(samples || "").split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
+  if (!lines.length) return '<span class="muted">—</span>';
+  return lines.map(function (u) {
+    return '<a class="sample-link" href="' + esc(u) + '" target="_blank" rel="noopener">🔗 ' + esc(u) + "</a>";
+  }).join("");
+}
+function jobCard(job) {
+  return '<div class="card clickable" data-job-id="' + job.id + '">' +
+    '<div class="card-title">' + esc(job.title) + "</div>" +
+    '<div class="meta-row"><span class="chip">' + esc(job.category) + "</span>" +
+    (job.budget ? '<span class="meta">💰 ' + esc(job.budget) + "</span>" : "") +
+    (job.deadline ? '<span class="meta">📅 ' + esc(job.deadline) + "</span>" : "") +
+    "</div>" +
+    '<div class="meta">👤 ' + esc(job.employer_name || "کارفرما") + " · " + fmtDate(job.created_at) + "</div>" +
+    "</div>";
+}
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2600);
+}
+
+/* ================= data: reads (Supabase SELECT only / mock) ================= */
+async function loadJobs() {
+  if (MOCK) {
+    state.jobs = MOCK_JOBS.filter(function (j) { return j.status === "open"; })
+      .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+    state.jobById = {};
+    MOCK_JOBS.forEach(function (j) { state.jobById[j.id] = j; });
+    return;
+  }
+  const res = await supabaseClient.from("jobs").select("*")
+    .eq("status", "open").order("created_at", { ascending: false });
+  if (res.error) throw new Error(res.error.message);
+  state.jobs = res.data || [];
+  state.jobById = {};
+  state.jobs.forEach(function (j) { state.jobById[j.id] = j; });
+}
+async function loadMyApplications() {
+  const myId = me().id;
+  if (MOCK) {
+    state.myApplications = MOCK_APPS.filter(function (a) { return a.freelancer_id === myId; })
+      .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+    return;
+  }
+  const res = await supabaseClient.from("applications").select("*")
+    .eq("freelancer_id", myId).order("created_at", { ascending: false });
+  if (res.error) throw new Error(res.error.message);
+  state.myApplications = res.data || [];
+  // Attach job titles for display.
+  const ids = state.myApplications.map(function (a) { return a.job_id; });
+  if (ids.length) {
+    const jr = await supabaseClient.from("jobs").select("id,title").in("id", ids);
+    if (!jr.error && jr.data) {
+      const map = {};
+      jr.data.forEach(function (j) { map[j.id] = j.title; });
+      state.myApplications.forEach(function (a) { a.job_title = map[a.job_id] || ("آگهی #" + a.job_id); });
+    }
+  }
+}
+async function loadMyJobs() {
+  const myId = me().id;
+  if (MOCK) {
+    state.myJobs = MOCK_JOBS.filter(function (j) { return j.employer_id === myId; })
+      .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+    return;
+  }
+  const res = await supabaseClient.from("jobs").select("*")
+    .eq("employer_id", myId).order("created_at", { ascending: false });
+  if (res.error) throw new Error(res.error.message);
+  state.myJobs = res.data || [];
+  state.myJobs.forEach(function (j) { state.jobById[j.id] = j; });
+}
+async function loadJobApplications(jobId) {
+  if (MOCK) {
+    state.jobApplications[jobId] = MOCK_APPS.filter(function (a) { return a.job_id === jobId; })
+      .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+    return;
+  }
+  const res = await supabaseClient.from("applications").select("*")
+    .eq("job_id", jobId).order("created_at", { ascending: false });
+  if (res.error) throw new Error(res.error.message);
+  state.jobApplications[jobId] = res.data || [];
+}
+async function findJob(jobId) {
+  if (state.jobById[jobId]) return state.jobById[jobId];
+  if (MOCK) return MOCK_JOBS.find(function (j) { return j.id === jobId; }) || null;
+  const res = await supabaseClient.from("jobs").select("*").eq("id", jobId).single();
+  if (res.error || !res.data) return null;
+  state.jobById[jobId] = res.data;
+  return res.data;
+}
+
+/* ================= writes: ONLY via Telegram sendData ================= */
+function sendToBot(payload, mockApply) {
+  if (tg && tg.sendData) {
+    // In Telegram this sends the data to the bot and closes the Mini App.
+    tg.sendData(JSON.stringify(payload));
+    showToast("فرستاده شد ✓");
+  } else {
+    // Preview only: apply locally so the screens reflect the change.
+    if (mockApply) mockApply();
+    showToast("فرستاده شد ✓ (حالت پیش‌نمایش)");
+  }
+}
+function mockCreateJob(p) {
+  const id = Math.max.apply(null, MOCK_JOBS.map(function (j) { return j.id; }).concat([0])) + 1;
+  const job = {
+    id: id, employer_id: me().id, employer_name: me().name,
+    title: p.title, category: p.category, budget: p.budget || "",
+    deadline: p.deadline || "", description: p.description || "",
+    status: "open", created_at: new Date().toISOString()
+  };
+  MOCK_JOBS.unshift(job);
+  state.jobById[id] = job;
+}
+function mockApply(p) {
+  const id = Math.max.apply(null, MOCK_APPS.map(function (a) { return a.id; }).concat([0])) + 1;
+  MOCK_APPS.unshift({
+    id: id, job_id: p.job_id, freelancer_id: me().id, freelancer_name: me().name,
+    samples: p.samples || "", price: p.price || "", message: p.message || "",
+    status: "pending", created_at: new Date().toISOString()
+  });
+}
+function mockSetStatus(p) {
+  const app = MOCK_APPS.find(function (a) { return a.id === p.application_id; });
+  if (app) app.status = p.status;
+  Object.keys(state.jobApplications).forEach(function (k) {
+    state.jobApplications[k].forEach(function (a) {
+      if (a.id === p.application_id) a.status = p.status;
+    });
+  });
+}
+
+/* ================= views ================= */
+function viewEl() { return document.getElementById("view"); }
+
+function renderJobs() {
+  let html = "<h2>کارهای باز</h2>";
+  if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
+  if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
+  if (!state.jobs.length) {
+    html += '<div class="empty">هنوز آگهی بازی نیست.<br>اولین آگهی را از تب «ثبت آگهی» بسازید.</div>';
+  } else {
+    html += state.jobs.map(jobCard).join("");
+  }
+  viewEl().innerHTML = html;
+  viewEl().querySelectorAll("[data-job-id]").forEach(function (el) {
+    el.addEventListener("click", function () { openJobDetail(parseInt(el.getAttribute("data-job-id"), 10)); });
+  });
+}
+
+async function openJobDetail(jobId) {
+  const job = await findJob(jobId);
+  state.view = { name: "job-detail", jobId: jobId };
+  if (!job) {
+    viewEl().innerHTML = '<button class="back" data-back>‹ بازگشت</button><div class="empty">این آگهی پیدا نشد.</div>';
+    bindBack("jobs");
+    renderTabs();
+    return;
+  }
+  const mine = job.employer_id === me().id;
+  const alreadyApplied = state.myApplications.some(function (a) { return a.job_id === jobId; });
+  let html = '<button class="back" data-back>‹ بازگشت</button>' +
+    '<div class="card"><div class="card-title">' + esc(job.title) + "</div>" +
+    '<div class="meta-row"><span class="chip">' + esc(job.category) + "</span>" + statusBadge(job.status) + "</div>" +
+    '<div class="meta-row">' +
+    (job.budget ? '<span class="meta">💰 بودجه: ' + esc(job.budget) + "</span>" : "") +
+    (job.deadline ? '<span class="meta">📅 ددلاین: ' + esc(job.deadline) + "</span>" : "") +
+    "</div>" +
+    '<div class="meta">👤 ' + esc(job.employer_name || "کارفرما") + " · " + fmtDate(job.created_at) + "</div>" +
+    (job.description ? '<p class="desc">' + esc(job.description) + "</p>" : "") +
+    "</div>";
+  if (mine) {
+    html += '<button class="btn" id="see-apps">مشاهده درخواست‌ها</button>';
+  } else if (alreadyApplied) {
+    html += '<div class="card"><span class="muted">شما برای این آگهی درخواست فرستاده‌اید.</span></div>';
+  } else if (job.status === "open") {
+    html += '<h2>ارسال درخواست</h2>' +
+      '<form id="apply-form">' +
+      '<label>لینک نمونه‌کارها (هر لینک در یک خط)</label>' +
+      '<textarea id="f-samples" placeholder="https://drive.google.com/...\nhttps://youtu.be/..." required></textarea>' +
+      '<label>قیمت پیشنهادی</label>' +
+      '<input id="f-price" type="text" placeholder="مثلا $50" required>' +
+      '<label>پیام به کارفرما</label>' +
+      '<textarea id="f-message" placeholder="چند جمله درباره تجربه و زمان تحویل…"></textarea>' +
+      '<button class="btn" type="submit">ارسال درخواست</button>' +
+      "</form>";
+  }
+  viewEl().innerHTML = html;
+  bindBack("jobs");
+  const seeApps = document.getElementById("see-apps");
+  if (seeApps) seeApps.addEventListener("click", function () { openJobApplications(jobId); });
+  const form = document.getElementById("apply-form");
+  if (form) form.addEventListener("submit", function (ev) { submitApply(ev, jobId); });
+  renderTabs();
+}
+
+function submitApply(ev, jobId) {
+  ev.preventDefault();
+  const payload = {
+    type: "apply",
+    job_id: jobId,
+    samples: document.getElementById("f-samples").value.trim(),
+    price: document.getElementById("f-price").value.trim(),
+    message: document.getElementById("f-message").value.trim()
+  };
+  if (!payload.samples || !payload.price) {
+    showToast("لینک نمونه‌کار و قیمت را وارد کنید");
+    return;
+  }
+  sendToBot(payload, function () { mockApply(payload); });
+  if (MOCK) { loadMyApplications().then(function () { state.view = { name: "my-apps" }; state.tab = "my-apps"; render(); }); }
+}
+
+function renderPost() {
+  viewEl().innerHTML = "<h2>ثبت آگهی جدید</h2>" +
+    '<form id="post-form">' +
+    '<label>عنوان آگهی</label>' +
+    '<input id="p-title" type="text" placeholder="مثلا: ادیتور ویدیوی چالش" required>' +
+    '<label>دسته‌بندی</label>' +
+    '<select id="p-category">' + CATEGORIES.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + "</option>"; }).join("") + "</select>" +
+    '<label>بودجه</label>' +
+    '<input id="p-budget" type="text" placeholder="مثلا $150">' +
+    '<label>ددلاین</label>' +
+    '<input id="p-deadline" type="date">' +
+    '<label>توضیحات</label>' +
+    '<textarea id="p-description" placeholder="نوع کار، مدت ویدیو، سبک موردنظر، نحوه تحویل…"></textarea>' +
+    '<button class="btn" type="submit">انتشار آگهی</button>' +
+    "</form>";
+  document.getElementById("post-form").addEventListener("submit", submitPostJob);
+}
+function submitPostJob(ev) {
+  ev.preventDefault();
+  const payload = {
+    type: "create_job",
+    title: document.getElementById("p-title").value.trim(),
+    category: document.getElementById("p-category").value,
+    budget: document.getElementById("p-budget").value.trim(),
+    deadline: document.getElementById("p-deadline").value,
+    description: document.getElementById("p-description").value.trim()
+  };
+  if (!payload.title) { showToast("عنوان آگهی را وارد کنید"); return; }
+  sendToBot(payload, function () { mockCreateJob(payload); });
+  if (MOCK) { loadJobs().then(function () { state.view = { name: "jobs" }; state.tab = "jobs"; render(); }); }
+}
+
+function renderMyApplications() {
+  let html = "<h2>درخواست‌های من</h2>";
+  if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
+  if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
+  if (!state.myApplications.length) {
+    html += '<div class="empty">هنوز درخواستی نفرستاده‌اید.<br>از تب «کارها» یک آگهی را باز کنید.</div>';
+  } else {
+    html += state.myApplications.map(function (a) {
+      const job = state.jobById[a.job_id];
+      const title = a.job_title || (job ? job.title : "آگهی #" + a.job_id);
+      return '<div class="card">' +
+        '<div class="card-title">' + esc(title) + "</div>" +
+        '<div class="meta-row">' + statusBadge(a.status) +
+        (a.price ? '<span class="meta">💰 پیشنهاد شما: ' + esc(a.price) + "</span>" : "") +
+        '<span class="meta">' + fmtDate(a.created_at) + "</span></div>" +
+        (a.message ? '<p class="desc">' + esc(a.message) + "</p>" : "") +
+        "</div>";
+    }).join("");
+  }
+  viewEl().innerHTML = html;
+}
+
+function renderMyJobs() {
+  let html = "<h2>آگهی‌های من</h2>";
+  if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
+  if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
+  if (!state.myJobs.length) {
+    html += '<div class="empty">هنوز آگهی ثبت نکرده‌اید.<br>از تب «ثبت آگهی» شروع کنید.</div>';
+  } else {
+    html += state.myJobs.map(function (job) {
+      const n = (state.jobApplications[job.id] || []).length;
+      return '<div class="card clickable" data-job-id="' + job.id + '">' +
+        '<div class="card-title">' + esc(job.title) + "</div>" +
+        '<div class="meta-row"><span class="chip">' + esc(job.category) + "</span>" + statusBadge(job.status) +
+        (job.budget ? '<span class="meta">💰 ' + esc(job.budget) + "</span>" : "") + "</div>" +
+        '<div class="meta">📨 درخواست‌ها: ' + n + " · " + fmtDate(job.created_at) + "</div>" +
+        "</div>";
+    }).join("");
+  }
+  viewEl().innerHTML = html;
+  viewEl().querySelectorAll("[data-job-id]").forEach(function (el) {
+    el.addEventListener("click", function () { openJobApplications(parseInt(el.getAttribute("data-job-id"), 10)); });
+  });
+}
+
+async function openJobApplications(jobId) {
+  state.view = { name: "job-apps", jobId: jobId };
+  state.loading = true;
+  render();
+  try {
+    await loadJobApplications(jobId);
+    state.loading = false;
+  } catch (e) {
+    state.loading = false;
+    state.error = "خطا در بارگذاری درخواست‌ها: " + e.message;
+  }
+  render();
+}
+
+function renderJobApplications() {
+  const jobId = state.view.jobId;
+  const job = state.jobById[jobId];
+  const apps = state.jobApplications[jobId] || [];
+  let html = '<button class="back" data-back>‹ بازگشت</button>' +
+    "<h2>درخواست‌ها" + (job ? " — " + esc(job.title) : "") + "</h2>";
+  if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
+  if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
+  if (!apps.length) {
+    html += '<div class="empty">هنوز درخواستی برای این آگهی نیست.</div>';
+  } else {
+    html += apps.map(function (a) {
+      let h = '<div class="card">' +
+        '<div class="card-title">👤 ' + esc(a.freelancer_name || "فریلنسر") + "</div>" +
+        '<div class="meta-row">' + statusBadge(a.status) +
+        (a.price ? '<span class="meta">💰 قیمت پیشنهادی: ' + esc(a.price) + "</span>" : "") +
+        '<span class="meta">' + fmtDate(a.created_at) + "</span></div>" +
+        '<div class="meta">نمونه‌کارها:</div>' + sampleLinks(a.samples) +
+        (a.message ? '<p class="desc">' + esc(a.message) + "</p>" : "");
+      if (a.status === "pending") {
+        h += '<div class="row-btns">' +
+          '<button class="btn" data-accept="' + a.id + '">✅ قبول</button>' +
+          '<button class="btn btn-danger" data-reject="' + a.id + '">✕ رد</button>' +
+          "</div>";
+      }
+      return h + "</div>";
+    }).join("");
+  }
+  viewEl().innerHTML = html;
+  bindBack("my-jobs");
+  viewEl().querySelectorAll("[data-accept]").forEach(function (el) {
+    el.addEventListener("click", function () { setAppStatus(parseInt(el.getAttribute("data-accept"), 10), "accepted"); });
+  });
+  viewEl().querySelectorAll("[data-reject]").forEach(function (el) {
+    el.addEventListener("click", function () { setAppStatus(parseInt(el.getAttribute("data-reject"), 10), "rejected"); });
+  });
+}
+function setAppStatus(appId, status) {
+  const payload = { type: "set_application_status", application_id: appId, status: status };
+  sendToBot(payload, function () { mockSetStatus(payload); });
+  if (MOCK) render();
+}
+
+function bindBack(tab) {
+  const b = viewEl().querySelector("[data-back]");
+  if (b) b.addEventListener("click", function () { switchTab(tab); });
+}
+
+/* ================= tabs & render ================= */
+function renderTabs() {
+  const active = state.view.name === "job-detail" ? "jobs"
+    : state.view.name === "job-apps" ? "my-jobs" : state.view.name;
+  document.querySelectorAll("#tabs button").forEach(function (btn) {
+    btn.classList.toggle("active", btn.getAttribute("data-tab") === active);
+  });
+}
+function render() {
+  renderTabs();
+  switch (state.view.name) {
+    case "jobs": renderJobs(); break;
+    case "job-detail": openJobDetail(state.view.jobId); break;
+    case "post": renderPost(); break;
+    case "my-apps": renderMyApplications(); break;
+    case "my-jobs": renderMyJobs(); break;
+    case "job-apps": renderJobApplications(); break;
+    default: renderJobs();
+  }
+}
+async function switchTab(tab) {
+  state.tab = tab;
+  state.error = "";
+  if (tab === "jobs") {
+    state.view = { name: "jobs" };
+    state.loading = true; render();
+    try { await loadJobs(); state.loading = false; } catch (e) { state.loading = false; state.error = "خطا در بارگذاری: " + e.message; }
+    render();
+  } else if (tab === "post") {
+    state.view = { name: "post" };
+    render();
+  } else if (tab === "my-apps") {
+    state.view = { name: "my-apps" };
+    state.loading = true; render();
+    try { await loadMyApplications(); state.loading = false; } catch (e) { state.loading = false; state.error = "خطا در بارگذاری: " + e.message; }
+    render();
+  } else if (tab === "my-jobs") {
+    state.view = { name: "my-jobs" };
+    state.loading = true; render();
+    try {
+      await loadMyJobs();
+      await Promise.all(state.myJobs.map(function (j) { return loadJobApplications(j.id); }));
+      state.loading = false;
+    } catch (e) { state.loading = false; state.error = "خطا در بارگذاری: " + e.message; }
+    render();
+  }
+}
+
+/* ================= init ================= */
+document.querySelectorAll("#tabs button").forEach(function (btn) {
+  btn.addEventListener("click", function () { switchTab(btn.getAttribute("data-tab")); });
+});
+(function init() {
+  const u = me();
+  document.getElementById("user-chip").textContent = u.name + (u.username ? " · @" + u.username : "");
+  document.getElementById("mock-badge").hidden = !MOCK;
+  if (tg) {
+    try { tg.ready(); tg.expand(); } catch (e) {}
+  }
+  switchTab("jobs");
+  // Preload my applications so job details can show "already applied".
+  loadMyApplications().catch(function () {});
+})();
+
+/* Debug hook for automated checks (harmless in production). */
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK };
+</script>
+</body>
+</html>
