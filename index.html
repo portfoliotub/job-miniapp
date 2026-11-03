@@ -37,6 +37,10 @@
     border-radius: 999px; padding: 3px 10px;
     box-shadow: 0 1px 4px rgba(0,0,0,0.15); white-space: nowrap;
   }
+  .app-version {
+    position: fixed; bottom: 66px; right: 10px; z-index: 30;
+    font-size: 10px; color: #9aa0a6; pointer-events: none;
+  }
   main { padding: 0 0 86px; max-width: 640px; margin: 0 auto; }
   h2 { font-size: 13px; font-weight: 600; color: var(--hint); margin: 0; padding: 16px 16px 6px; }
   .muted { color: var(--hint); font-size: 13px; }
@@ -209,6 +213,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
+<span class="app-version" id="app-version">v14</span>
 <main id="view"></main>
 <nav id="tabs">
   <button data-tab="jobs"><span class="ico tile-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>کارها</button>
@@ -245,7 +250,25 @@ const JOB_STATUS_LABEL = {
 
 /* ================= environment ================= */
 const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
-const tgUser = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : null;
+// Telegram appends tgWebAppData=<init data> to the WebApp URL on every
+// launch — the same string the telegram-web-app.js library parses. Read
+// the user from it when the library failed to load (slow connection):
+// without this, a missing window.Telegram silently turns a real Telegram
+// session into preview mode and posts vanish.
+function tgUserFromUrl() {
+  try {
+    var raw = new URLSearchParams(window.location.search).get("tgWebAppData");
+    if (!raw) return null;
+    var inner = new URLSearchParams(raw);
+    var userJson = inner.get("user");
+    if (!userJson) return null;
+    var u = JSON.parse(userJson);
+    return (u && typeof u.id === "number") ? u : null;
+  } catch (e) { return null; }
+}
+const tgUser = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user)
+  ? tg.initDataUnsafe.user
+  : tgUserFromUrl();
 
 // Mock mode only when opened outside Telegram (plain browser preview) or
 // when Supabase is not configured yet — reads come from sample data below.
@@ -473,15 +496,28 @@ function sendToBot(payload, mockApply) {
   // Real Telegram user only: sendData delivers to the bot. The check must
   // not depend on Supabase — reads and writes are independent, so a failed
   // database read must never swallow a post.
+  var data = JSON.stringify(payload);
   if (tg && tg.sendData && tgUser) {
     // In Telegram this sends the data to the bot and closes the Mini App.
-    tg.sendData(JSON.stringify(payload));
+    tg.sendData(data);
     showToast("فرستاده شد ✓");
-  } else {
-    // Preview only: apply locally so the screens reflect the change.
-    if (mockApply) mockApply();
-    showToast("فرستاده شد ✓ (حالت پیش‌نمایش)");
+    return;
   }
+  // Fallback: Telegram's own Android bridge. When telegram-web-app.js fails
+  // to load on a slow connection, window.Telegram is missing but the native
+  // bridge is still there — send the exact event the library sends
+  // (web_app_data_send). tgUser from the launch URL proves this is a real
+  // WebApp launch, not a plain browser.
+  if (tgUser && window.TelegramWebviewProxy && window.TelegramWebviewProxy.postEvent) {
+    try {
+      window.TelegramWebviewProxy.postEvent("web_app_data_send", JSON.stringify({data: data}));
+      showToast("فرستاده شد ✓");
+      return;
+    } catch (e) {}
+  }
+  // Preview only: apply locally so the screens reflect the change.
+  if (mockApply) mockApply();
+  showToast("فرستاده شد ✓ (حالت پیش‌نمایش)");
 }
 function mockCreateJob(p) {
   const id = Math.max.apply(null, MOCK_JOBS.map(function (j) { return j.id; }).concat([0])) + 1;
