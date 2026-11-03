@@ -28,27 +28,11 @@
     line-height: 1.6;
     -webkit-tap-highlight-color: transparent;
   }
-  header {
-    position: sticky; top: 0; z-index: 10;
-    background: var(--bg);
-    border-bottom: 1px solid var(--separator);
-    padding: 8px 12px;
-    display: flex; align-items: center; gap: 10px;
-  }
-  .app-avatar {
-    width: 42px; height: 42px; border-radius: 50%;
-    background: var(--link); color: #fff; font-size: 20px;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  }
-  .header-text { flex: 1; min-width: 0; }
-  header h1 { font-size: 16px; margin: 0; line-height: 1.3; }
-  .header-sub {
-    font-size: 13px; color: var(--hint);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
   .mock-badge {
+    position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30;
     font-size: 11px; color: #7a5b00; background: #fff3cd;
-    border-radius: 999px; padding: 2px 8px; flex-shrink: 0;
+    border-radius: 999px; padding: 3px 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15); white-space: nowrap;
   }
   main { padding: 0 0 86px; max-width: 640px; margin: 0 auto; }
   h2 { font-size: 13px; font-weight: 600; color: var(--hint); margin: 0; padding: 16px 16px 6px; }
@@ -153,7 +137,6 @@
   }
   nav#tabs button .ico { font-size: 20px; line-height: 1; }
   nav#tabs button svg { width: 24px; height: 24px; }
-  .app-avatar svg { width: 22px; height: 22px; }
   nav#tabs button.active { color: var(--link); font-weight: 700; }
   #toast {
     position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%) translateY(8px);
@@ -165,14 +148,7 @@
 </style>
 </head>
 <body>
-<header>
-  <div class="app-avatar"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div>
-  <div class="header-text">
-    <h1>کاریابی یوتیوب</h1>
-    <div class="header-sub" id="user-chip"></div>
-  </div>
-  <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-</header>
+<span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
 <main id="view"></main>
 <nav id="tabs">
   <button data-tab="jobs"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>کارها</button>
@@ -724,7 +700,6 @@ document.querySelectorAll("#tabs button").forEach(function (btn) {
 });
 (function init() {
   const u = me();
-  document.getElementById("user-chip").textContent = u.name + (u.username ? " · @" + u.username : "");
   document.getElementById("mock-badge").hidden = !MOCK;
   if (tg) {
     try {
