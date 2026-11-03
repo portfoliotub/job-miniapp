@@ -706,6 +706,7 @@ function submitPostJob(ev) {
     description: document.getElementById("p-description").value.trim()
   };
   if (!payload.title) { showToast("عنوان آگهی را وارد کنید"); return; }
+  if (!payload.budget) { showToast("بودجه را وارد کنید"); return; }
   if (workType === "حضوری" && !location) { showToast("منطقه را مشخص کنید"); return; }
   sendToBot(payload, function () { mockCreateJob(payload); });
   if (MOCK) { loadMyJobs().then(function () { state.view = { name: "my-jobs" }; state.tab = "my-jobs"; render(); }); }
