@@ -69,7 +69,16 @@
   .job-row-text { flex: 1; min-width: 0; }
   .job-row-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .job-row-sub { font-size: 13.5px; color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .job-row-time { font-size: 12px; color: var(--hint); flex-shrink: 0; align-self: flex-start; padding-top: 2px; }
+  .job-row-side { flex-shrink: 0; text-align: left; align-self: flex-start; }
+  .job-row-budget { font-size: 14px; font-weight: 700; color: var(--link); }
+  .job-row-date { font-size: 12px; color: var(--hint); margin-top: 2px; }
+  .empty-icon { color: var(--hint); opacity: 0.5; margin-bottom: 10px; }
+  .empty-icon svg { width: 56px; height: 56px; }
+  .empty-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .stats { display: flex; gap: 8px; margin: 10px 0 2px; }
+  .stat { flex: 1; background: var(--bg); border-radius: 10px; padding: 9px 12px; }
+  .stat-label { font-size: 12px; color: var(--hint); }
+  .stat-value { font-size: 15px; font-weight: 700; margin-top: 1px; }
   /* Telegram message-style card (detail / applications) */
   .card {
     background: var(--secondary-bg);
@@ -117,7 +126,7 @@
     border: none; border-radius: 10px; cursor: pointer;
   }
   form .btn { margin-left: 0; margin-right: 0; }
-  .btn:active { opacity: 0.85; }
+  .btn:active { opacity: 0.85; transform: scale(0.98); }
   .btn-ghost {
     background: var(--secondary-bg); color: var(--link);
     border: 1px solid var(--separator);
@@ -143,6 +152,8 @@
     padding: 4px 0;
   }
   nav#tabs button .ico { font-size: 20px; line-height: 1; }
+  nav#tabs button svg { width: 24px; height: 24px; }
+  .app-avatar svg { width: 22px; height: 22px; }
   nav#tabs button.active { color: var(--link); font-weight: 700; }
   #toast {
     position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%) translateY(8px);
@@ -155,7 +166,7 @@
 </head>
 <body>
 <header>
-  <div class="app-avatar">🎬</div>
+  <div class="app-avatar"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div>
   <div class="header-text">
     <h1>کاریابی یوتیوب</h1>
     <div class="header-sub" id="user-chip"></div>
@@ -164,10 +175,10 @@
 </header>
 <main id="view"></main>
 <nav id="tabs">
-  <button data-tab="jobs"><span class="ico">📋</span>کارها</button>
-  <button data-tab="post"><span class="ico">➕</span>ثبت آگهی</button>
-  <button data-tab="my-apps"><span class="ico">📨</span>درخواست‌های من</button>
-  <button data-tab="my-jobs"><span class="ico">💼</span>آگهی‌های من</button>
+  <button data-tab="jobs"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>کارها</button>
+  <button data-tab="post"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></span>ثبت آگهی</button>
+  <button data-tab="my-apps"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></span>درخواست‌های من</button>
+  <button data-tab="my-jobs"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>آگهی‌های من</button>
 </nav>
 <div id="toast"></div>
 
@@ -281,6 +292,18 @@ function avatarHtml(name) {
   const letter = String(name || "?").trim().charAt(0) || "?";
   return '<div class="avatar" style="background:' + avatarColor(name) + '">' + esc(letter) + "</div>";
 }
+/* Inline SVG icons (no emoji) — Telegram-style line icons. */
+const ICONS = {
+  check: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  x: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  link: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+};
+function emptyState(title, sub) {
+  return '<div class="empty"><div class="empty-icon">' + ICONS.search + '</div>' +
+    '<div class="empty-title">' + esc(title) + "</div>" +
+    '<div class="muted">' + esc(sub) + "</div></div>";
+}
 function statusBadge(status) {
   const cls = STATUS_LABEL[status] ? status : "pending";
   return '<span class="badge ' + cls + '">' + esc(STATUS_LABEL[status] || status) + "</span>";
@@ -289,7 +312,7 @@ function sampleLinks(samples) {
   const lines = String(samples || "").split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
   if (!lines.length) return '<span class="muted">—</span>';
   return lines.map(function (u) {
-    return '<a class="sample-link" href="' + esc(u) + '" target="_blank" rel="noopener">🔗 ' + esc(u) + "</a>";
+    return '<a class="sample-link" href="' + esc(u) + '" target="_blank" rel="noopener">' + ICONS.link + " " + esc(u) + "</a>";
   }).join("");
 }
 function jobCard(job) {
@@ -297,9 +320,10 @@ function jobCard(job) {
     avatarHtml(job.employer_name || "کارفرما") +
     '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
     '<div class="job-row-sub">' + esc(job.employer_name || "کارفرما") + " · " + esc(job.category) +
-    (job.budget ? " · " + esc(job.budget) : "") +
     (job.deadline ? " · " + esc(job.deadline) : "") + "</div></div>" +
-    '<div class="job-row-time">' + fmtDate(job.created_at) + "</div>" +
+    '<div class="job-row-side">' +
+    (job.budget ? '<div class="job-row-budget">' + esc(job.budget) + "</div>" : "") +
+    '<div class="job-row-date">' + fmtDate(job.created_at) + "</div></div>" +
     "</div>";
 }
 let toastTimer = null;
@@ -431,7 +455,7 @@ function renderJobs() {
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
   if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
   if (!state.jobs.length) {
-    html += '<div class="empty">هنوز آگهی بازی نیست.<br>اولین آگهی را از تب «ثبت آگهی» بسازید.</div>';
+    html += emptyState("هنوز آگهی بازی نیست", "اولین آگهی را از تب «ثبت آگهی» بسازید.");
   } else {
     html += state.jobs.map(jobCard).join("");
   }
@@ -445,7 +469,7 @@ async function openJobDetail(jobId) {
   const job = await findJob(jobId);
   state.view = { name: "job-detail", jobId: jobId };
   if (!job) {
-    viewEl().innerHTML = '<button class="back" data-back>› بازگشت</button><div class="empty">این آگهی پیدا نشد.</div>';
+    viewEl().innerHTML = '<button class="back" data-back>› بازگشت</button>' + emptyState("این آگهی پیدا نشد", "ممکن است حذف شده باشد.");
     bindBack("jobs");
     renderTabs();
     return;
@@ -456,10 +480,10 @@ async function openJobDetail(jobId) {
     '<div class="card"><div class="card-head">' + avatarHtml(job.employer_name || "کارفرما") +
     '<div><div class="card-title">' + esc(job.title) + '</div><div class="meta">' + esc(job.employer_name || "کارفرما") + " · " + fmtDate(job.created_at) + "</div></div></div>" +
     '<div class="meta-row"><span class="chip">' + esc(job.category) + "</span>" + statusBadge(job.status) + "</div>" +
-    '<div class="meta-row">' +
-    (job.budget ? '<span class="meta">💰 بودجه: ' + esc(job.budget) + "</span>" : "") +
-    (job.deadline ? '<span class="meta">📅 ددلاین: ' + esc(job.deadline) + "</span>" : "") +
-    "</div>" +
+    ((job.budget || job.deadline) ? '<div class="stats">' +
+      (job.budget ? '<div class="stat"><div class="stat-label">بودجه</div><div class="stat-value">' + esc(job.budget) + "</div></div>" : "") +
+      (job.deadline ? '<div class="stat"><div class="stat-label">ددلاین</div><div class="stat-value">' + esc(job.deadline) + "</div></div>" : "") +
+      "</div>" : "") +
     (job.description ? '<p class="desc">' + esc(job.description) + "</p>" : "") +
     "</div>";
   if (mine) {
@@ -541,7 +565,7 @@ function renderMyApplications() {
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
   if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
   if (!state.myApplications.length) {
-    html += '<div class="empty">هنوز درخواستی نفرستاده‌اید.<br>از تب «کارها» یک آگهی را باز کنید.</div>';
+    html += emptyState("هنوز درخواستی نفرستاده‌اید", "از تب «کارها» یک آگهی را باز کنید.");
   } else {
     html += state.myApplications.map(function (a) {
       const job = state.jobById[a.job_id];
@@ -549,7 +573,7 @@ function renderMyApplications() {
       return '<div class="card">' +
         '<div class="card-head">' + avatarHtml(title) + '<div class="card-title">' + esc(title) + "</div></div>" +
         '<div class="meta-row">' + statusBadge(a.status) +
-        (a.price ? '<span class="meta">💰 پیشنهاد شما: ' + esc(a.price) + "</span>" : "") +
+        (a.price ? '<span class="meta">پیشنهاد شما: ' + esc(a.price) + "</span>" : "") +
         '<span class="meta">' + fmtDate(a.created_at) + "</span></div>" +
         (a.message ? '<p class="desc">' + esc(a.message) + "</p>" : "") +
         "</div>";
@@ -563,7 +587,7 @@ function renderMyJobs() {
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
   if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
   if (!state.myJobs.length) {
-    html += '<div class="empty">هنوز آگهی ثبت نکرده‌اید.<br>از تب «ثبت آگهی» شروع کنید.</div>';
+    html += emptyState("هنوز آگهی ثبت نکرده‌اید", "از تب «ثبت آگهی» شروع کنید.");
   } else {
     html += state.myJobs.map(function (job) {
       const n = (state.jobApplications[job.id] || []).length;
@@ -571,9 +595,10 @@ function renderMyJobs() {
         avatarHtml(job.title) +
         '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
         '<div class="job-row-sub">' + esc(job.category) +
-        (job.budget ? " · " + esc(job.budget) : "") +
-        " · 📨 درخواست‌ها: " + n + "</div></div>" +
-        '<div class="job-row-time">' + fmtDate(job.created_at) + "</div>" +
+        (job.budget ? " · " + esc(job.budget) : "") + "</div></div>" +
+        '<div class="job-row-side">' +
+        '<div class="job-row-budget">' + n + " درخواست</div>" +
+        '<div class="job-row-date">' + fmtDate(job.created_at) + "</div></div>" +
         "</div>";
     }).join("");
   }
@@ -606,20 +631,20 @@ function renderJobApplications() {
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
   if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
   if (!apps.length) {
-    html += '<div class="empty">هنوز درخواستی برای این آگهی نیست.</div>';
+    html += emptyState("هنوز درخواستی برای این آگهی نیست", "وقتی فریلنسری درخواست بده، اینجا می‌بینی.");
   } else {
     html += apps.map(function (a) {
       let h = '<div class="card">' +
         '<div class="card-head">' + avatarHtml(a.freelancer_name || "فریلنسر") + '<div class="card-title">' + esc(a.freelancer_name || "فریلنسر") + "</div></div>" +
         '<div class="meta-row">' + statusBadge(a.status) +
-        (a.price ? '<span class="meta">💰 قیمت پیشنهادی: ' + esc(a.price) + "</span>" : "") +
+        (a.price ? '<span class="meta">قیمت پیشنهادی: ' + esc(a.price) + "</span>" : "") +
         '<span class="meta">' + fmtDate(a.created_at) + "</span></div>" +
         '<div class="meta">نمونه‌کارها:</div>' + sampleLinks(a.samples) +
         (a.message ? '<p class="desc">' + esc(a.message) + "</p>" : "");
       if (a.status === "pending") {
         h += '<div class="row-btns">' +
-          '<button class="btn" data-accept="' + a.id + '">✅ قبول</button>' +
-          '<button class="btn btn-danger" data-reject="' + a.id + '">✕ رد</button>' +
+          '<button class="btn" data-accept="' + a.id + '">' + ICONS.check + " قبول</button>" +
+          '<button class="btn btn-danger" data-reject="' + a.id + '">' + ICONS.x + " رد</button>" +
           "</div>";
       }
       return h + "</div>";
