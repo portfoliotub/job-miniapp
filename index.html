@@ -172,6 +172,8 @@ const CONFIG = {
 
 /* ================= constants ================= */
 const CATEGORIES = ["تامنیل", "ادیت ویدیو", "اسکریپت", "سایر"];
+const DEADLINES = ["یک روزه", "دو روزه", "سه روزه", "چهار روزه", "پنج روزه", "شش روزه", "هفت روزه", "بیشتر از هفت روز"];
+const WORK_TYPES = ["دورکاری", "حضوری"];
 const STATUS_LABEL = {
   open: "باز", closed: "بسته",
   pending: "در انتظار", accepted: "قبول شد", rejected: "رد شد"
@@ -214,11 +216,11 @@ function me() {
 
 /* ================= mock data (preview only) ================= */
 const MOCK_JOBS = [
-  { id: 1, employer_id: 222, employer_name: "آرش", title: "ادیتور ویدیوی چالش برای کانال ۲۰۰هزاری", category: "ادیت ویدیو", budget: "$150", deadline: "2026-11-10", description: "ویدیوی ۱۵ دقیقه‌ای چالش با ریتم تند، زوم و افکت‌های خنده‌دار. فایل خام و رفرنس می‌فرستم؛ تحویل ۳ روزه.", status: "open", created_at: "2026-11-03T08:00:00Z" },
-  { id: 2, employer_id: 333, employer_name: "سارا", title: "طراح تامنیل برای کانال گیمینگ", category: "تامنیل", budget: "$40", deadline: "2026-11-08", description: "تامنیل برای ویدیوی ماینکرفت؛ سبک مینیمال و سینمایی، حداکثر ۳ المان.", status: "open", created_at: "2026-11-02T15:30:00Z" },
-  { id: 3, employer_id: 111111, employer_name: "کالی", title: "اسکریپت‌نویس برای ویدیوی مستند کوتاه", category: "اسکریپت", budget: "$80", deadline: "2026-11-15", description: "اسکریپت ۸ دقیقه‌ای درباره تاریخ زیپ؛ لحن داستانی و جذاب.", status: "open", created_at: "2026-11-02T10:00:00Z" },
-  { id: 4, employer_id: 444, employer_name: "مهدی", title: "ادیتور شورت ویدیو (عمودی)", category: "ادیت ویدیو", budget: "$25", deadline: "2026-11-07", description: "هر هفته ۳ شورت ۳۰ ثانیه‌ای از ویدیوی بلند؛ کپشن و ساندافکت.", status: "open", created_at: "2026-11-01T18:20:00Z" },
-  { id: 5, employer_id: 555, employer_name: "نگار", title: "تامنیل برای ویدیوی ولاگ سفر", category: "تامنیل", budget: "$60", deadline: "2026-11-12", description: "ولاگ سفر به شمال؛ تامنیل گرم و رنگی با چهره.", status: "open", created_at: "2026-10-31T09:45:00Z" }
+  { id: 1, employer_id: 222, employer_name: "آرش", title: "ادیتور ویدیوی چالش برای کانال ۲۰۰هزاری", category: "ادیت ویدیو", budget: "$150", deadline: "2026-11-10", work_type: "دورکاری", description: "ویدیوی ۱۵ دقیقه‌ای چالش با ریتم تند، زوم و افکت‌های خنده‌دار. فایل خام و رفرنس می‌فرستم؛ تحویل ۳ روزه.", status: "open", created_at: "2026-11-03T08:00:00Z" },
+  { id: 2, employer_id: 333, employer_name: "سارا", title: "طراح تامنیل برای کانال گیمینگ", category: "تامنیل", budget: "$40", deadline: "2026-11-08", work_type: "حضوری", location: "تهران", description: "تامنیل برای ویدیوی ماینکرفت؛ سبک مینیمال و سینمایی، حداکثر ۳ المان.", status: "open", created_at: "2026-11-02T15:30:00Z" },
+  { id: 3, employer_id: 111111, employer_name: "کالی", title: "اسکریپت‌نویس برای ویدیوی مستند کوتاه", category: "اسکریپت", budget: "$80", deadline: "2026-11-15", work_type: "دورکاری", description: "اسکریپت ۸ دقیقه‌ای درباره تاریخ زیپ؛ لحن داستانی و جذاب.", status: "open", created_at: "2026-11-02T10:00:00Z" },
+  { id: 4, employer_id: 444, employer_name: "مهدی", title: "ادیتور شورت ویدیو (عمودی)", category: "ادیت ویدیو", budget: "$25", deadline: "2026-11-07", work_type: "دورکاری", description: "هر هفته ۳ شورت ۳۰ ثانیه‌ای از ویدیوی بلند؛ کپشن و ساندافکت.", status: "open", created_at: "2026-11-01T18:20:00Z" },
+  { id: 5, employer_id: 555, employer_name: "نگار", title: "تامنیل برای ویدیوی ولاگ سفر", category: "تامنیل", budget: "$60", deadline: "2026-11-12", work_type: "دورکاری", description: "ولاگ سفر به شمال؛ تامنیل گرم و رنگی با چهره.", status: "open", created_at: "2026-10-31T09:45:00Z" }
 ];
 const MOCK_APPS = [
   { id: 101, job_id: 3, freelancer_id: 777, freelancer_name: "مریم", samples: "https://drive.google.com/drive/folders/example1\nhttps://youtu.be/example1", price: "$70", message: "سلام! دو سال اسکریپت مستند می‌نویسم؛ نمونه‌ها رو ببینید.", status: "pending", created_at: "2026-11-03T09:10:00Z" },
@@ -296,7 +298,8 @@ function jobCard(job) {
     avatarHtml(job.employer_name || "کارفرما") +
     '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
     '<div class="job-row-sub">' + esc(job.employer_name || "کارفرما") + " · " + esc(job.category) +
-    (job.deadline ? " · " + esc(job.deadline) : "") + "</div></div>" +
+    (job.deadline ? " · " + esc(job.deadline) : "") +
+    (job.work_type ? " · " + esc(job.work_type) : "") + "</div></div>" +
     '<div class="job-row-side">' +
     (job.budget ? '<div class="job-row-budget">' + esc(job.budget) + "</div>" : "") +
     '<div class="job-row-date">' + fmtDate(job.created_at) + "</div></div>" +
@@ -399,7 +402,8 @@ function mockCreateJob(p) {
   const job = {
     id: id, employer_id: me().id, employer_name: me().name,
     title: p.title, category: p.category, budget: p.budget || "",
-    deadline: p.deadline || "", description: p.description || "",
+    deadline: p.deadline || "", work_type: p.work_type || "دورکاری", location: p.location || "",
+    description: p.description || "",
     status: "open", created_at: new Date().toISOString()
   };
   MOCK_JOBS.unshift(job);
@@ -455,7 +459,9 @@ async function openJobDetail(jobId) {
   let html = '<button class="back" data-back>› بازگشت</button>' +
     '<div class="card"><div class="card-head">' + avatarHtml(job.employer_name || "کارفرما") +
     '<div><div class="card-title">' + esc(job.title) + '</div><div class="meta">' + esc(job.employer_name || "کارفرما") + " · " + fmtDate(job.created_at) + "</div></div></div>" +
-    '<div class="meta-row"><span class="chip">' + esc(job.category) + "</span>" + statusBadge(job.status) + "</div>" +
+    '<div class="meta-row"><span class="chip">' + esc(job.category) + "</span>" +
+    (job.work_type ? '<span class="chip">' + esc(job.work_type) + (job.location ? " — " + esc(job.location) : "") + "</span>" : "") +
+    statusBadge(job.status) + "</div>" +
     ((job.budget || job.deadline) ? '<div class="stats">' +
       (job.budget ? '<div class="stat"><div class="stat-label">بودجه</div><div class="stat-value">' + esc(job.budget) + "</div></div>" : "") +
       (job.deadline ? '<div class="stat"><div class="stat-label">ددلاین</div><div class="stat-value">' + esc(job.deadline) + "</div></div>" : "") +
@@ -514,24 +520,36 @@ function renderPost() {
     '<label>بودجه</label>' +
     '<input id="p-budget" type="text" placeholder="مثلا $150">' +
     '<label>ددلاین</label>' +
-    '<input id="p-deadline" type="date">' +
+    '<select id="p-deadline">' + DEADLINES.map(function (d) { return '<option value="' + esc(d) + '">' + esc(d) + "</option>"; }).join("") + "</select>" +
+    '<label>نوع همکاری</label>' +
+    '<select id="p-work-type">' + WORK_TYPES.map(function (w) { return '<option value="' + esc(w) + '">' + esc(w) + "</option>"; }).join("") + "</select>" +
+    '<div id="p-location-wrap" hidden><label>منطقه / شهر</label>' +
+    '<input id="p-location" type="text" placeholder="مثلا: تهران، سعادت‌آباد"></div>' +
     '<label>توضیحات</label>' +
     '<textarea id="p-description" placeholder="نوع کار، مدت ویدیو، سبک موردنظر، نحوه تحویل…"></textarea>' +
     '<button class="btn" type="submit">انتشار آگهی</button>' +
     "</form>";
   document.getElementById("post-form").addEventListener("submit", submitPostJob);
+  document.getElementById("p-work-type").addEventListener("change", function (ev) {
+    document.getElementById("p-location-wrap").hidden = ev.target.value !== "حضوری";
+  });
 }
 function submitPostJob(ev) {
   ev.preventDefault();
+  const workType = document.getElementById("p-work-type").value;
+  const location = document.getElementById("p-location").value.trim();
   const payload = {
     type: "create_job",
     title: document.getElementById("p-title").value.trim(),
     category: document.getElementById("p-category").value,
     budget: document.getElementById("p-budget").value.trim(),
     deadline: document.getElementById("p-deadline").value,
+    work_type: workType,
+    location: location,
     description: document.getElementById("p-description").value.trim()
   };
   if (!payload.title) { showToast("عنوان آگهی را وارد کنید"); return; }
+  if (workType === "حضوری" && !location) { showToast("منطقه را مشخص کنید"); return; }
   sendToBot(payload, function () { mockCreateJob(payload); });
   if (MOCK) { loadJobs().then(function () { state.view = { name: "jobs" }; state.tab = "jobs"; render(); }); }
 }
