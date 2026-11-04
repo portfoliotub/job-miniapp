@@ -251,7 +251,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v21</span>
+<span class="app-version" id="app-version">v22</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -747,31 +747,42 @@ function renderJobs() {
           "</div>";
       }).join("");
   }
-  // Freelancer-style browse: search + category chips + sort (Upwork-like).
-  html += '<input id="job-search" class="search-input" type="search" placeholder="جستجوی آگهی…" value="' + esc(state.jobFilter.q) + '">' +
-    '<div class="chip-row">' + ["همه"].concat(CATEGORIES).map(function (c) {
-      return '<button type="button" class="fchip' + (state.jobFilter.cat === c ? " active" : "") + '" data-cat="' + esc(c) + '">' + esc(c) + "</button>";
-    }).join("") + "</div>" +
-    '<div class="sort-row">' +
-    '<button type="button" class="fchip' + (state.jobFilter.sort === "new" ? " active" : "") + '" data-sort="new">جدیدترین</button>' +
-    '<button type="button" class="fchip' + (state.jobFilter.sort === "budget" ? " active" : "") + '" data-sort="budget">بیشترین بودجه</button>' +
-    '</div>' +
-    '<div class="job-count" id="job-count"></div>' +
-    '<div id="job-list"></div>';
+  // v22: once a request is registered in this section (a pending ad in the
+  // admin queue) but no ad is open yet, the whole browse block goes away —
+  // search, chips, sort, count and empty text. The queue above is the
+  // section's content. The block comes back when an ad opens, or when the
+  // section is truly empty (duck). Freelancers never see pending jobs, so
+  // their browse block is unaffected.
+  const showBrowse = state.jobs.length > 0 || state.pendingJobs.length === 0;
+  if (showBrowse) {
+    // Freelancer-style browse: search + category chips + sort (Upwork-like).
+    html += '<input id="job-search" class="search-input" type="search" placeholder="جستجوی آگهی…" value="' + esc(state.jobFilter.q) + '">' +
+      '<div class="chip-row">' + ["همه"].concat(CATEGORIES).map(function (c) {
+        return '<button type="button" class="fchip' + (state.jobFilter.cat === c ? " active" : "") + '" data-cat="' + esc(c) + '">' + esc(c) + "</button>";
+      }).join("") + "</div>" +
+      '<div class="sort-row">' +
+      '<button type="button" class="fchip' + (state.jobFilter.sort === "new" ? " active" : "") + '" data-sort="new">جدیدترین</button>' +
+      '<button type="button" class="fchip' + (state.jobFilter.sort === "budget" ? " active" : "") + '" data-sort="budget">بیشترین بودجه</button>' +
+      '</div>' +
+      '<div class="job-count" id="job-count"></div>' +
+      '<div id="job-list"></div>';
+  }
   viewEl().innerHTML = html;
-  // Search re-renders only the list, so the keyboard and focus stay alive.
-  const search = document.getElementById("job-search");
-  search.addEventListener("input", function () { state.jobFilter.q = search.value; renderJobList(); });
-  viewEl().querySelectorAll("[data-cat]").forEach(function (el) {
-    el.addEventListener("click", function () { state.jobFilter.cat = el.getAttribute("data-cat"); renderJobs(); });
-  });
-  viewEl().querySelectorAll("[data-sort]").forEach(function (el) {
-    el.addEventListener("click", function () { state.jobFilter.sort = el.getAttribute("data-sort"); renderJobs(); });
-  });
+  if (showBrowse) {
+    // Search re-renders only the list, so the keyboard and focus stay alive.
+    const search = document.getElementById("job-search");
+    search.addEventListener("input", function () { state.jobFilter.q = search.value; renderJobList(); });
+    viewEl().querySelectorAll("[data-cat]").forEach(function (el) {
+      el.addEventListener("click", function () { state.jobFilter.cat = el.getAttribute("data-cat"); renderJobs(); });
+    });
+    viewEl().querySelectorAll("[data-sort]").forEach(function (el) {
+      el.addEventListener("click", function () { state.jobFilter.sort = el.getAttribute("data-sort"); renderJobs(); });
+    });
+    renderJobList();
+  }
   viewEl().querySelectorAll("[data-approve-job]").forEach(function (el) {
     el.addEventListener("click", function () { setJobStatus(parseInt(el.getAttribute("data-approve-job"), 10), "open"); });
   });
-  renderJobList();
 }
 
 async function openJobDetail(jobId) {
@@ -1301,7 +1312,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v21 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v22 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
