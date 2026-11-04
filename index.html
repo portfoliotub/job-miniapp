@@ -185,6 +185,7 @@
   }
   .picker-btn .picker-chevron { color: var(--hint); display: flex; flex-shrink: 0; }
   .picker-btn .picker-chevron svg { width: 18px; height: 18px; }
+  .picker-btn.empty .picker-value { color: var(--hint); }
   #sheet-overlay {
     position: fixed; inset: 0; z-index: 40;
     background: rgba(0,0,0,0.4); opacity: 0; transition: opacity .2s;
@@ -250,7 +251,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v20</span>
+<span class="app-version" id="app-version">v21</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -862,9 +863,10 @@ async function submitApply(ev, jobId) {
 }
 
 /* Custom bottom-sheet picker: same look for every dropdown, no OS popup. */
-function pickerButton(id, value) {
-  return '<button type="button" class="picker-btn" id="' + id + '" data-value="' + esc(value) + '">' +
-    '<span class="picker-value">' + esc(value) + "</span>" +
+function pickerButton(id, value, placeholder) {
+  const empty = !value;
+  return '<button type="button" class="picker-btn' + (empty ? " empty" : "") + '" id="' + id + '" data-value="' + esc(value || "") + '">' +
+    '<span class="picker-value">' + esc(empty ? (placeholder || "انتخاب کنید") : value) + "</span>" +
     '<span class="picker-chevron">' + ICONS.chevron + "</span></button>";
 }
 function openPicker(title, options, current, onPick) {
@@ -896,6 +898,7 @@ function wirePicker(id, title, options, onChange) {
     const btn = document.getElementById(id);
     openPicker(title, options, btn.getAttribute("data-value"), function (v) {
       btn.setAttribute("data-value", v);
+      btn.classList.remove("empty");
       btn.querySelector(".picker-value").textContent = v;
       if (onChange) onChange(v);
     });
@@ -908,13 +911,13 @@ function renderPost() {
     '<label>عنوان آگهی</label>' +
     '<input id="p-title" type="text" placeholder="مثلا: ادیتور ویدیوی چالش" required>' +
     '<label>دسته‌بندی</label>' +
-    pickerButton("p-category", CATEGORIES[0]) +
-    '<label>بودجه</label>' +
-    '<input id="p-budget" type="text" placeholder="مثلا $150">' +
+    pickerButton("p-category", "", "انتخاب کنید") +
+    '<label>بودجه (دلار)</label>' +
+    '<input id="p-budget" type="text" inputmode="numeric" autocomplete="off" placeholder="مثلا 150 — حداقل ۷ دلار">' +
     '<label>ددلاین</label>' +
-    pickerButton("p-deadline", DEADLINES[0]) +
+    pickerButton("p-deadline", "", "انتخاب کنید") +
     '<label>نوع همکاری</label>' +
-    pickerButton("p-work-type", WORK_TYPES[0]) +
+    pickerButton("p-work-type", "", "انتخاب کنید") +
     '<div id="p-location-wrap" hidden><label>منطقه / شهر</label>' +
     '<input id="p-location" type="text" placeholder="مثلا: تهران، سعادت‌آباد"></div>' +
     '<label>توضیحات</label>' +
@@ -922,6 +925,11 @@ function renderPost() {
     '<button class="btn" type="submit">انتشار آگهی</button>' +
     "</form>";
   document.getElementById("post-form").addEventListener("submit", submitPostJob);
+  // Budget accepts digits only — strip anything else as it is typed/pasted.
+  document.getElementById("p-budget").addEventListener("input", function () {
+    const clean = this.value.replace(/[^\d]/g, "");
+    if (clean !== this.value) this.value = clean;
+  });
   wirePicker("p-category", "دسته‌بندی", CATEGORIES);
   wirePicker("p-deadline", "ددلاین", DEADLINES);
   wirePicker("p-work-type", "نوع همکاری", WORK_TYPES, function (v) {
@@ -932,18 +940,24 @@ async function submitPostJob(ev) {
   ev.preventDefault();
   const workType = document.getElementById("p-work-type").getAttribute("data-value");
   const location = document.getElementById("p-location").value.trim();
+  const budgetRaw = document.getElementById("p-budget").value.trim();
+  const budgetNum = parseInt(budgetRaw.replace(/[^\d]/g, ""), 10);
   const payload = {
     type: "create_job",
     title: document.getElementById("p-title").value.trim(),
     category: document.getElementById("p-category").getAttribute("data-value"),
-    budget: document.getElementById("p-budget").value.trim(),
+    budget: isNaN(budgetNum) ? "" : "$" + budgetNum,
     deadline: document.getElementById("p-deadline").getAttribute("data-value"),
     work_type: workType,
     location: location,
     description: document.getElementById("p-description").value.trim()
   };
   if (!payload.title) { showToast("عنوان آگهی را وارد کنید"); return; }
-  if (!payload.budget) { showToast("بودجه را وارد کنید"); return; }
+  if (!payload.category) { showToast("دسته‌بندی را انتخاب کنید"); return; }
+  if (!budgetRaw) { showToast("بودجه را وارد کنید"); return; }
+  if (isNaN(budgetNum) || budgetNum < 7) { showToast("حداقل بودجه ۷ دلار است"); return; }
+  if (!payload.deadline) { showToast("ددلاین را انتخاب کنید"); return; }
+  if (!workType) { showToast("نوع همکاری را انتخاب کنید"); return; }
   if (workType === "حضوری" && !location) { showToast("منطقه را مشخص کنید"); return; }
   if (!payload.description) { showToast("توضیحات آگهی را وارد کنید"); return; }
   if (MOCK) {
@@ -1287,7 +1301,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v20 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v21 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
