@@ -251,7 +251,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v22</span>
+<span class="app-version" id="app-version">v23</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -357,7 +357,7 @@ function setRole(r) {
   buildTabs();
 }
 function homeTab() {
-  if (getRole() === "freelancer") return "jobs";
+  if (getRole() === "freelancer") return "my-apps";
   return isAdmin() ? "jobs" : "post";
 }
 function getLaunchSource() {
@@ -1148,7 +1148,7 @@ function renderWelcome() {
     '<button type="button" class="role-card" data-role="employer"><span class="role-ico tile-blue">' + briefcase + "</span>" +
     '<span><span class="role-title">کارفرما</span><span class="role-sub">آگهی ثبت کن، فریلنسر پیدا کن، درخواست‌ها را بررسی کن</span></span></button>' +
     '<button type="button" class="role-card" data-role="freelancer"><span class="role-ico tile-green">' + searchIco + "</span>" +
-    '<span><span class="role-title">فریلنسر</span><span class="role-sub">آگهی‌ها را ببین، با نمونه‌کار و قیمت درخواست بده</span></span></button>' +
+    '<span><span class="role-title">فریلنسر</span><span class="role-sub">درخواست‌هایت را پیگیری کن و پروفایلت را کامل کن</span></span></button>' +
     '<div class="welcome-note">انتخابت را بعداً می‌توانی عوض کنی.</div>' +
     (role ? '<button class="btn btn-ghost role-switch" id="welcome-back">بازگشت</button>' : "") +
     "</div>";
@@ -1215,10 +1215,11 @@ const TAB_DEFS = {
   "my-jobs": { label: "آگهی‌های من", tile: "tile-orange", icon: "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z\"/></svg>" },
   "profile": { label: "پروفایل", tile: "tile-teal", icon: "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\"/><circle cx=\"12\" cy=\"7\" r=\"4\"/></svg>" }
 };
-/* Tabs depend on the chosen role. Freelancers browse jobs (like Upwork);
-   employers keep the v17 layout (post in the middle); admin keeps 4 tabs. */
+/* Tabs depend on the chosen role. Freelancers (v23) see only their
+   applications + profile — no job browsing; employers keep the v17 layout
+   (post in the middle); admin keeps 4 tabs. */
 function tabsForRole() {
-  if (getRole() === "freelancer") return ["jobs", "my-apps", "profile"];
+  if (getRole() === "freelancer") return ["my-apps", "profile"];
   if (isAdmin()) return ["jobs", "post", "my-apps", "my-jobs"];
   return ["my-apps", "post", "my-jobs"]; // post in the middle
 }
@@ -1260,12 +1261,13 @@ function render() {
   mountDucks();
 }
 async function switchTab(tab) {
-  // Role guards: freelancers browse jobs; employers (non-admin) cannot open
-  // the jobs tab (v17) and freelancers cannot open post/my-jobs. Admin can
+  // Role guards (v23): the jobs tab is admin-only — non-admin employers
+  // (v17) and freelancers (v23) are sent home instead. Freelancers also
+  // cannot open post/my-jobs; their home is my-applications. Admin can
   // open everything regardless of role.
   const role = getRole();
-  if (tab === "jobs" && !isAdmin() && role !== "freelancer") tab = "post";
-  if ((tab === "post" || tab === "my-jobs") && role === "freelancer" && !isAdmin()) tab = "jobs";
+  if (tab === "jobs" && !isAdmin()) tab = homeTab();
+  if ((tab === "post" || tab === "my-jobs") && role === "freelancer" && !isAdmin()) tab = "my-apps";
   if (tab === "profile" && role !== "freelancer") tab = homeTab();
   state.tab = tab;
   state.error = "";
@@ -1312,7 +1314,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v22 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v23 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
