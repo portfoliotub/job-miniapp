@@ -75,28 +75,24 @@
   .avatar-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
   /* v27: freelancer profile banner, YouTube channel-art style. v28: the
      display ratio is YouTube's channel-art strip (2560×423), not 16:9 —
-     16:9 was too tall; the upload size stays 2560×1440. */
-  .banner-wrap { position: relative; border-radius: 0; overflow: hidden; aspect-ratio: 2560 / 423; background: linear-gradient(135deg, #2481cc 0%, #6ab3f0 55%, #9fd0f7 100%); cursor: pointer; }
+     16:9 was too tall; the upload size stays 2560×1440. v32: the banner's
+     corners are rounded (12px); tapping it does nothing — the editor is
+     removed, only the pencil opens the gallery. */
+  .banner-wrap { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 2560 / 423; background: linear-gradient(135deg, #2481cc 0%, #6ab3f0 55%, #9fd0f7 100%); }
   .banner-img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .banner-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #fff; padding-bottom: 30px; }
   .banner-empty .banner-title { font-weight: 700; font-size: 15px; line-height: 1.3; }
   .banner-empty .muted { color: rgba(255,255,255,.85); font-size: 13px; line-height: 1.3; }
   .banner-edit { position: absolute; left: 8px; bottom: 8px; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
-  .banner-editor { background: var(--secondary-bg); border-radius: 12px; padding: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
-  /* v27 fix: .banner-editor sets display:flex, which overrides the hidden
-     attribute's UA display:none — without this the editor was always open. */
-  .banner-editor[hidden] { display: none; }
   /* v29: banner and profile are ONE card (YouTube channel style) — the
      banner is the card's top, the avatar overlaps its bottom edge. v30:
      avatar + name/ID are CENTRED (column layout) so the name sits below
-     the banner, not on it; the two stat boxes are removed. */
+     the banner, not on it; the two stat boxes are removed. v32: the
+     banner editor is gone — tapping the banner does nothing; only the
+     pencil opens the gallery. */
   .profile-card { padding: 0; overflow: hidden; }
   .profile-card .card-head { flex-direction: column; align-items: center; text-align: center; padding: 0 14px; margin: -19px 0 13px; position: relative; }
   .profile-card .avatar { box-shadow: 0 0 0 3px var(--bg); }
-  .profile-card .banner-editor { margin: 0 14px 13px; }
-  .banner-url-row { display: flex; gap: 8px; }
-  .banner-url-row input { flex: 1; min-width: 0; }
-  .banner-hint { font-size: 12.5px; }
   .job-row-text { flex: 1; min-width: 0; }
   .job-row-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .job-row-sub { font-size: 13.5px; color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -278,7 +274,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v31</span>
+<span class="app-version" id="app-version">v32</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -504,8 +500,10 @@ const ICONS = {
 /* Freelancer profile banner (v27): YouTube channel-art style cover,
    2560×423 display strip. v29: the banner is the TOP of the profile card
    (one section, avatar overlapping its bottom edge), not a separate box.
-   The freelancer sets any image (upload from the gallery or a link); it is
-   stored in the local profile like the other profile fields. */
+   v32: tapping the banner does nothing — the editor (gallery / link /
+   remove panel) is removed; only the pencil opens the gallery. The
+   freelancer sets an image by upload; it is stored in the local profile
+   like the other profile fields. */
 function bannerHtml(p) {
   const img = p.banner
     ? '<img class="banner-img" id="banner-img" src="' + esc(p.banner) + '" alt="">'
@@ -513,14 +511,6 @@ function bannerHtml(p) {
   return '<div class="banner-wrap" id="banner-wrap">' + img +
     '<button class="banner-edit" id="banner-edit" type="button" aria-label="ویرایش بنر">' + ICONS.edit + '</button></div>' +
     '<input type="file" id="banner-file" accept="image/*" hidden>';
-}
-function bannerEditorHtml(p) {
-  return '<div class="banner-editor" id="banner-editor" hidden>' +
-    '<label class="btn btn-ghost" for="banner-file">انتخاب عکس از گالری</label>' +
-    '<div class="banner-url-row"><input id="banner-url" type="url" placeholder="یا لینک عکس را بچسبانید…" dir="ltr"><button class="btn btn-small" id="banner-url-save" type="button">ثبت</button></div>' +
-    (p.banner ? '<button class="btn btn-ghost" id="banner-remove" type="button">حذف بنر</button>' : '') +
-    '<div class="muted banner-hint">فقط عکس ۲۵۶۰×۱۴۴۰ قبول می‌شود (سایز چنل آرت یوتیوب).</div>' +
-    '</div>';
 }
 /* v29: a banner must be exactly 2560×1440 (YouTube channel-art size) —
    any other size is refused, on upload and on link alike. */
@@ -1258,6 +1248,10 @@ function showWelcome() {
   state.view = { name: "welcome" };
   render();
 }
+/* v32: country of residence replaces the base-price field in the
+   freelancer profile — picked from a bottom-sheet list like the
+   post-form pickers. */
+const COUNTRIES = ["ایران", "افغانستان", "تاجیکستان", "ترکیه", "امارات متحده عربی", "عربستان سعودی", "قطر", "بحرین", "کویت", "عمان", "عراق", "سوریه", "لبنان", "اردن", "مصر", "مراکش", "الجزایر", "تونس", "لیبی", "سودان", "نیجریه", "کنیا", "اتیوپی", "آفریقای جنوبی", "آلمان", "فرانسه", "بریتانیا", "هلند", "بلژیک", "سوئیس", "اتریش", "سوئد", "نروژ", "دانمارک", "فنلاند", "اسپانیا", "ایتالیا", "پرتغال", "یونان", "لهستان", "جمهوری چک", "مجارستان", "رومانی", "اوکراین", "روسیه", "آمریکا", "کانادا", "مکزیک", "برزیل", "آرژانتین", "شیلی", "کلمبیا", "پرو", "استرالیا", "نیوزیلند", "ژاپن", "کره جنوبی", "چین", "هند", "پاکستان", "بنگلادش", "سریلانکا", "مالزی", "سنگاپور", "اندونزی", "تایلند", "ویتنام", "فیلیپین", "سایر"];
 function renderProfile() {
   const p = getProfile();
   const u = me();
@@ -1266,15 +1260,14 @@ function renderProfile() {
     bannerHtml(p) +
     '<div class="card-head">' + userAvatarHtml(u) + '<div><div class="card-title">' + esc(u.name) + "</div>" +
     '<div class="meta">' + (u.username ? "@" + esc(u.username) : "فریلنسر") + "</div></div></div>" +
-    bannerEditorHtml(p) +
     "</div>" +
     '<form id="profile-form">' +
     '<label>مهارت‌ها</label>' +
     '<input id="pf-skills" type="text" placeholder="مثلا: ادیت چالش، تامنیل، موشن" value="' + esc(p.skills || "") + '">' +
     '<label>لینک پورتفولیو / نمونه‌کار</label>' +
     '<input id="pf-portfolio" type="text" placeholder="https://portfoliotub.github.io" value="' + esc(p.portfolio || "") + '">' +
-    '<label>قیمت پایه</label>' +
-    '<input id="pf-rate" type="text" placeholder="مثلا $50 به ازای هر ویدیو" value="' + esc(p.rate || "") + '">' +
+    '<label>کدام کشور زندگی می‌کنی؟</label>' +
+    pickerButton("pf-country", p.country || "", "انتخاب کنید") +
     '<label>درباره من</label>' +
     '<textarea id="pf-bio" placeholder="چند جمله درباره تجربه و سبک کاری…">' + esc(p.bio || "") + "</textarea>" +
     '<div class="row-btns"><button class="btn" type="submit">ذخیره پروفایل</button>' +
@@ -1285,7 +1278,7 @@ function renderProfile() {
     saveProfile({
       skills: document.getElementById("pf-skills").value.trim(),
       portfolio: document.getElementById("pf-portfolio").value.trim(),
-      rate: document.getElementById("pf-rate").value.trim(),
+      country: document.getElementById("pf-country").getAttribute("data-value") || "",
       bio: document.getElementById("pf-bio").value.trim(),
       banner: getProfile().banner || ""
     });
@@ -1294,41 +1287,15 @@ function renderProfile() {
   // v26: a dead photo URL falls back to the letter avatar.
   const photoImg = viewEl().querySelector(".avatar-photo");
   if (photoImg) photoImg.addEventListener("error", function () { photoImg.remove(); });
-  // v29: the pencil opens the gallery directly; tapping the banner itself
-  // opens the editor (link / remove).
-  document.getElementById("banner-edit").addEventListener("click", function (ev) {
-    ev.stopPropagation();
+  // v32: the pencil is the only banner control — it opens the gallery
+  // directly. Tapping the banner itself does nothing (the editor is gone).
+  document.getElementById("banner-edit").addEventListener("click", function () {
     document.getElementById("banner-file").click();
-  });
-  document.getElementById("banner-wrap").addEventListener("click", function () {
-    const ed = document.getElementById("banner-editor");
-    ed.hidden = !ed.hidden;
   });
   document.getElementById("banner-file").addEventListener("change", function (ev) {
     handleBannerFile(ev.target.files && ev.target.files[0]);
   });
-  document.getElementById("banner-url-save").addEventListener("click", function () {
-    const url = document.getElementById("banner-url").value.trim();
-    if (url.indexOf("http://") !== 0 && url.indexOf("https://") !== 0) { showToast("لینک معتبر نیست"); return; }
-    const probe = new Image();
-    probe.onload = function () {
-      if (!bannerSizeOk(probe)) {
-        showToast("فقط عکس ۲۵۶۰×۱۴۴۰ قبول می‌شود — سایز این عکس " + probe.naturalWidth + "×" + probe.naturalHeight + " است");
-        return;
-      }
-      saveProfile(Object.assign({}, getProfile(), { banner: url }));
-      renderProfile();
-      showToast("بنر ذخیره شد ✓");
-    };
-    probe.onerror = function () { showToast("خواندن عکس ممکن نشد"); };
-    probe.src = url;
-  });
-  const bannerRemove = document.getElementById("banner-remove");
-  if (bannerRemove) bannerRemove.addEventListener("click", function () {
-    saveProfile(Object.assign({}, getProfile(), { banner: "" }));
-    renderProfile();
-    showToast("بنر حذف شد");
-  });
+  wirePicker("pf-country", "کدام کشور زندگی می‌کنی؟", COUNTRIES);
   const bannerImg = document.getElementById("banner-img");
   if (bannerImg) bannerImg.addEventListener("error", function () { bannerImg.remove(); });
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
@@ -1448,7 +1415,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v31 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v32 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
