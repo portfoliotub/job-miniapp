@@ -76,16 +76,23 @@
   /* v27: freelancer profile banner, YouTube channel-art style. v28: the
      display ratio is YouTube's channel-art strip (2560×423), not 16:9 —
      16:9 was too tall; the upload size stays 2560×1440. */
-  .banner-wrap { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 2560 / 423; background: linear-gradient(135deg, #2481cc 0%, #6ab3f0 55%, #9fd0f7 100%); margin-bottom: 12px; cursor: pointer; }
+  .banner-wrap { position: relative; border-radius: 0; overflow: hidden; aspect-ratio: 2560 / 423; background: linear-gradient(135deg, #2481cc 0%, #6ab3f0 55%, #9fd0f7 100%); cursor: pointer; }
   .banner-img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .banner-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #fff; }
   .banner-empty .banner-title { font-weight: 700; font-size: 15px; }
   .banner-empty .muted { color: rgba(255,255,255,.85); font-size: 13px; }
-  .banner-edit { position: absolute; right: 8px; bottom: 8px; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+  .banner-edit { position: absolute; left: 8px; bottom: 8px; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
   .banner-editor { background: var(--secondary-bg); border-radius: 12px; padding: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
   /* v27 fix: .banner-editor sets display:flex, which overrides the hidden
      attribute's UA display:none — without this the editor was always open. */
   .banner-editor[hidden] { display: none; }
+  /* v29: banner and profile are ONE card (YouTube channel style) — the
+     banner is the card's top, the avatar overlaps its bottom edge. */
+  .profile-card { padding: 0; overflow: hidden; }
+  .profile-card .card-head { padding: 0 14px; margin: -19px 0 6px; position: relative; }
+  .profile-card .avatar { box-shadow: 0 0 0 3px var(--bg); }
+  .profile-card .profile-stats { margin: 10px 14px; }
+  .profile-card .banner-editor { margin: 0 14px 13px; }
   .banner-url-row { display: flex; gap: 8px; }
   .banner-url-row input { flex: 1; min-width: 0; }
   .banner-hint { font-size: 12.5px; }
@@ -270,7 +277,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v28</span>
+<span class="app-version" id="app-version">v29</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -493,23 +500,31 @@ const ICONS = {
   edit: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
 };
-/* Freelancer profile banner (v27): YouTube channel-art style cover, 16:9,
-   above the profile card. The freelancer sets any image (upload from the
-   gallery or a link); it is stored in the local profile like the other
-   profile fields. Tapping the banner or the pencil opens the editor. */
+/* Freelancer profile banner (v27): YouTube channel-art style cover,
+   2560×423 display strip. v29: the banner is the TOP of the profile card
+   (one section, avatar overlapping its bottom edge), not a separate box.
+   The freelancer sets any image (upload from the gallery or a link); it is
+   stored in the local profile like the other profile fields. */
 function bannerHtml(p) {
   const img = p.banner
     ? '<img class="banner-img" id="banner-img" src="' + esc(p.banner) + '" alt="">'
     : '<div class="banner-empty">' + ICONS.camera + '<div class="banner-title">بنر پروفایل</div><div class="muted">برای افزودن عکس بزنید</div></div>';
   return '<div class="banner-wrap" id="banner-wrap">' + img +
     '<button class="banner-edit" id="banner-edit" type="button" aria-label="ویرایش بنر">' + ICONS.edit + '</button></div>' +
-    '<div class="banner-editor" id="banner-editor" hidden>' +
+    '<input type="file" id="banner-file" accept="image/*" hidden>';
+}
+function bannerEditorHtml(p) {
+  return '<div class="banner-editor" id="banner-editor" hidden>' +
     '<label class="btn btn-ghost" for="banner-file">انتخاب عکس از گالری</label>' +
-    '<input type="file" id="banner-file" accept="image/*" hidden>' +
     '<div class="banner-url-row"><input id="banner-url" type="url" placeholder="یا لینک عکس را بچسبانید…" dir="ltr"><button class="btn btn-small" id="banner-url-save" type="button">ثبت</button></div>' +
     (p.banner ? '<button class="btn btn-ghost" id="banner-remove" type="button">حذف بنر</button>' : '') +
-    '<div class="muted banner-hint">بهترین سایز ۲۵۶۰×۱۴۴۰ است (مثل بنر یوتیوب)؛ عکس به‌صورت خودکار در کادر برش می‌خورد.</div>' +
+    '<div class="muted banner-hint">فقط عکس ۲۵۶۰×۱۴۴۰ قبول می‌شود (سایز چنل آرت یوتیوب).</div>' +
     '</div>';
+}
+/* v29: a banner must be exactly 2560×1440 (YouTube channel-art size) —
+   any other size is refused, on upload and on link alike. */
+function bannerSizeOk(img) {
+  return img.naturalWidth === 2560 && img.naturalHeight === 1440;
 }
 /* v27: an uploaded banner photo is downscaled to max 1280px wide (JPEG)
    before storage, so it fits comfortably in localStorage. */
@@ -520,6 +535,10 @@ function handleBannerFile(file) {
   reader.onload = function () {
     const img = new Image();
     img.onload = function () {
+      if (!bannerSizeOk(img)) {
+        showToast("فقط عکس ۲۵۶۰×۱۴۴۰ قبول می‌شود — سایز این عکس " + img.naturalWidth + "×" + img.naturalHeight + " است");
+        return;
+      }
       const scale = Math.min(1, 1280 / img.naturalWidth);
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
@@ -1244,11 +1263,14 @@ function renderProfile() {
   const apps = state.myApplications || [];
   const accepted = apps.filter(function (a) { return a.status === "accepted"; }).length;
   viewEl().innerHTML = "<h2>پروفایل فریلنسری</h2>" +
+    '<div class="card profile-card">' +
     bannerHtml(p) +
-    '<div class="card"><div class="card-head">' + userAvatarHtml(u) + '<div><div class="card-title">' + esc(u.name) + "</div>" +
+    '<div class="card-head">' + userAvatarHtml(u) + '<div><div class="card-title">' + esc(u.name) + "</div>" +
     '<div class="meta">' + (u.username ? "@" + esc(u.username) : "فریلنسر") + "</div></div></div>" +
     '<div class="profile-stats"><div class="stat"><div class="stat-label">درخواست‌ها</div><div class="stat-value">' + apps.length + '</div></div>' +
-    '<div class="stat"><div class="stat-label">قبول‌شده</div><div class="stat-value">' + accepted + "</div></div></div></div>" +
+    '<div class="stat"><div class="stat-label">قبول‌شده</div><div class="stat-value">' + accepted + "</div></div></div>" +
+    bannerEditorHtml(p) +
+    "</div>" +
     '<form id="profile-form">' +
     '<label>مهارت‌ها</label>' +
     '<input id="pf-skills" type="text" placeholder="مثلا: ادیت چالش، تامنیل، موشن" value="' + esc(p.skills || "") + '">' +
@@ -1275,20 +1297,34 @@ function renderProfile() {
   // v26: a dead photo URL falls back to the letter avatar.
   const photoImg = viewEl().querySelector(".avatar-photo");
   if (photoImg) photoImg.addEventListener("error", function () { photoImg.remove(); });
-  // v27: banner editor — tapping the banner or the pencil toggles it.
-  const bannerEditor = document.getElementById("banner-editor");
-  const toggleBannerEditor = function () { bannerEditor.hidden = !bannerEditor.hidden; };
-  document.getElementById("banner-wrap").addEventListener("click", toggleBannerEditor);
-  document.getElementById("banner-edit").addEventListener("click", function (ev) { ev.stopPropagation(); toggleBannerEditor(); });
+  // v29: the pencil opens the gallery directly; tapping the banner itself
+  // opens the editor (link / remove).
+  document.getElementById("banner-edit").addEventListener("click", function (ev) {
+    ev.stopPropagation();
+    document.getElementById("banner-file").click();
+  });
+  document.getElementById("banner-wrap").addEventListener("click", function () {
+    const ed = document.getElementById("banner-editor");
+    ed.hidden = !ed.hidden;
+  });
   document.getElementById("banner-file").addEventListener("change", function (ev) {
     handleBannerFile(ev.target.files && ev.target.files[0]);
   });
   document.getElementById("banner-url-save").addEventListener("click", function () {
     const url = document.getElementById("banner-url").value.trim();
     if (url.indexOf("http://") !== 0 && url.indexOf("https://") !== 0) { showToast("لینک معتبر نیست"); return; }
-    saveProfile(Object.assign({}, getProfile(), { banner: url }));
-    renderProfile();
-    showToast("بنر ذخیره شد ✓");
+    const probe = new Image();
+    probe.onload = function () {
+      if (!bannerSizeOk(probe)) {
+        showToast("فقط عکس ۲۵۶۰×۱۴۴۰ قبول می‌شود — سایز این عکس " + probe.naturalWidth + "×" + probe.naturalHeight + " است");
+        return;
+      }
+      saveProfile(Object.assign({}, getProfile(), { banner: url }));
+      renderProfile();
+      showToast("بنر ذخیره شد ✓");
+    };
+    probe.onerror = function () { showToast("خواندن عکس ممکن نشد"); };
+    probe.src = url;
   });
   const bannerRemove = document.getElementById("banner-remove");
   if (bannerRemove) bannerRemove.addEventListener("click", function () {
@@ -1415,7 +1451,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v28 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v29 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -1436,7 +1472,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, getProfile: getProfile, homeTab: homeTab };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile };
 </script>
 </body>
 </html>
