@@ -274,7 +274,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v33</span>
+<span class="app-version" id="app-version">v34</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1161,6 +1161,24 @@ function renderJobApplications() {
   const apps = state.jobApplications[jobId] || [];
   let html = '<button class="back" data-back>› بازگشت</button>' +
     "<h2>درخواست‌ها" + (job ? " — " + esc(job.title) : "") + "</h2>";
+  // v34: tapping an own ad opens this view, so it must show the ad's full
+  // details — before v34 it showed only the title and the applications,
+  // and the user reported "nothing opens" when tapping his ad.
+  if (job) {
+    html += '<div class="card job-detail-card"><div class="card-head">' + avatarHtml(job.employer_name || "کارفرما") +
+      '<div><div class="card-title">' + esc(job.title) + '</div><div class="meta">' + esc(job.employer_name || "کارفرما") + " · " + fmtDate(job.created_at) + "</div></div></div>" +
+      '<div class="meta-row">' +
+      (job.category ? '<span class="chip">' + esc(job.category) + "</span>" : "") +
+      (job.work_type ? '<span class="chip">' + esc(job.work_type) + (job.location ? " — " + esc(job.location) : "") + "</span>" : "") +
+      jobStatusBadge(job.status) + "</div>" +
+      ((job.budget || job.deadline) ? '<div class="stats">' +
+        (job.budget ? '<div class="stat"><div class="stat-label">بودجه</div><div class="stat-value">' + esc(job.budget) + "</div></div>" : "") +
+        (job.deadline ? '<div class="stat"><div class="stat-label">ددلاین</div><div class="stat-value">' + esc(job.deadline) + "</div></div>" : "") +
+        "</div>" : "") +
+      (job.description ? '<p class="desc">' + esc(job.description) + "</p>" : "") +
+      '<div class="meta">' + apps.length + " درخواست</div>" +
+      "</div>";
+  }
   if (job && job.status === "pending") {
     html += '<div class="card"><div class="muted">این آگهی هنوز منتشر نشده و توی لیست کارها دیده نمی‌شه.</div>' +
       (isAdmin() ? '<button type="button" class="btn" data-approve-job="' + job.id + '">تایید و انتشار ✓</button>' : "") + "</div>";
@@ -1415,7 +1433,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v33 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v34 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
