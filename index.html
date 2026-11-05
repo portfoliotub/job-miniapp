@@ -101,17 +101,18 @@
   .job-row-budget { font-size: 14px; font-weight: 700; color: var(--link); }
   .job-row-date { font-size: 12px; color: var(--hint); margin-top: 2px; }
   /* v35: my-jobs rows are cards — the ad's details sit inline under the
-     row (work type + location, deadline, description), no tap needed. */
+     row (work type + location, deadline, description), no tap needed.
+     v36: budget + deadline are labeled stat boxes in the same details
+     block (the deadline chip is gone to avoid showing it twice), and the
+     card is NOT clickable anymore — tapping it does nothing. */
   .my-job-card {
     background: var(--bg);
     border-radius: 16px;
     margin: 8px 12px;
     padding: 11px 12px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-    cursor: pointer;
   }
-  .my-job-card:active { background: var(--secondary-bg); }
-  .my-job-card .job-row { margin: 0; padding: 0; box-shadow: none; border-radius: 0; }
+  .my-job-card .job-row { margin: 0; padding: 0; box-shadow: none; border-radius: 0; cursor: default; }
   .my-job-details { margin-top: 10px; }
   .my-job-details .meta-row { margin: 0; }
   .my-job-details .desc { margin-top: 8px; }
@@ -289,7 +290,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v35</span>
+<span class="app-version" id="app-version">v36</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1139,22 +1140,26 @@ function renderMyJobs() {
       // v35: the ad's details are written inline under the row (work type +
       // location, deadline, description) — the user asked for them to be
       // visible in the list itself, not only after tapping the ad.
-      return '<div class="my-job-card" data-job-id="' + job.id + '">' +
+      // v36: budget + deadline are labeled stat boxes in the same details
+      // block (budget moved out of the header sub-line so it is not shown
+      // twice), and the card carries no click handler anymore — the user
+      // asked for tapping an own ad to do nothing.
+      return '<div class="my-job-card">' +
         '<div class="job-row">' +
         avatarHtml(job.title) +
         '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
-        '<div class="job-row-sub">' + esc(job.category) +
-        (job.budget ? " · " + esc(job.budget) : "") + "</div>" +
+        '<div class="job-row-sub">' + esc(job.category) + "</div>" +
         '<div class="job-row-status">' + jobStatusBadge(job.status) + "</div></div>" +
         '<div class="job-row-side">' +
         '<div class="job-row-budget">' + n + " درخواست</div>" +
         '<div class="job-row-date">' + fmtDate(job.created_at) + "</div></div>" +
         "</div>" +
-        ((job.work_type || job.deadline || job.description) ?
+        ((job.work_type || job.budget || job.deadline || job.description) ?
           '<div class="my-job-details">' +
-          ((job.work_type || job.deadline) ? '<div class="meta-row">' +
-            (job.work_type ? '<span class="chip">' + esc(job.work_type) + (job.location ? " — " + esc(job.location) : "") + "</span>" : "") +
-            (job.deadline ? '<span class="chip">' + esc(job.deadline) + "</span>" : "") +
+          (job.work_type ? '<div class="meta-row"><span class="chip">' + esc(job.work_type) + (job.location ? " — " + esc(job.location) : "") + "</span></div>" : "") +
+          ((job.budget || job.deadline) ? '<div class="stats">' +
+            (job.budget ? '<div class="stat"><div class="stat-label">بودجه</div><div class="stat-value">' + esc(job.budget) + "</div></div>" : "") +
+            (job.deadline ? '<div class="stat"><div class="stat-label">ددلاین</div><div class="stat-value">' + esc(job.deadline) + "</div></div>" : "") +
             "</div>" : "") +
           (job.description ? '<p class="desc">' + esc(job.description) + "</p>" : "") +
           "</div>" : "") +
@@ -1164,9 +1169,8 @@ function renderMyJobs() {
   html += '<button class="btn btn-ghost role-switch" id="switch-role">تغییر نقش</button>';
   viewEl().innerHTML = html;
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
-  viewEl().querySelectorAll("[data-job-id]").forEach(function (el) {
-    el.addEventListener("click", function () { openJobApplications(parseInt(el.getAttribute("data-job-id"), 10)); });
-  });
+  // v36: no click handler on my-jobs cards — tapping an own ad does
+  // nothing; all its details are already shown inline in the card.
 }
 
 async function openJobApplications(jobId) {
@@ -1461,7 +1465,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v35 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v36 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
