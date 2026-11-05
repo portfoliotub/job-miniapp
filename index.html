@@ -274,7 +274,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v32</span>
+<span class="app-version" id="app-version">v33</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1251,7 +1251,7 @@ function showWelcome() {
 /* v32: country of residence replaces the base-price field in the
    freelancer profile — picked from a bottom-sheet list like the
    post-form pickers. */
-const COUNTRIES = ["ایران", "افغانستان", "تاجیکستان", "ترکیه", "امارات متحده عربی", "عربستان سعودی", "قطر", "بحرین", "کویت", "عمان", "عراق", "سوریه", "لبنان", "اردن", "مصر", "مراکش", "الجزایر", "تونس", "لیبی", "سودان", "نیجریه", "کنیا", "اتیوپی", "آفریقای جنوبی", "آلمان", "فرانسه", "بریتانیا", "هلند", "بلژیک", "سوئیس", "اتریش", "سوئد", "نروژ", "دانمارک", "فنلاند", "اسپانیا", "ایتالیا", "پرتغال", "یونان", "لهستان", "جمهوری چک", "مجارستان", "رومانی", "اوکراین", "روسیه", "آمریکا", "کانادا", "مکزیک", "برزیل", "آرژانتین", "شیلی", "کلمبیا", "پرو", "استرالیا", "نیوزیلند", "ژاپن", "کره جنوبی", "چین", "هند", "پاکستان", "بنگلادش", "سریلانکا", "مالزی", "سنگاپور", "اندونزی", "تایلند", "ویتنام", "فیلیپین", "سایر"];
+const COUNTRIES = ["افغانستان", "تاجیکستان", "ترکیه", "امارات متحده عربی", "عربستان سعودی", "قطر", "بحرین", "کویت", "عمان", "عراق", "سوریه", "لبنان", "اردن", "مصر", "مراکش", "الجزایر", "تونس", "لیبی", "سودان", "نیجریه", "کنیا", "اتیوپی", "آفریقای جنوبی", "آلمان", "فرانسه", "بریتانیا", "هلند", "بلژیک", "سوئیس", "اتریش", "سوئد", "نروژ", "دانمارک", "فنلاند", "اسپانیا", "ایتالیا", "پرتغال", "یونان", "لهستان", "جمهوری چک", "مجارستان", "رومانی", "اوکراین", "روسیه", "آمریکا", "کانادا", "مکزیک", "برزیل", "آرژانتین", "شیلی", "کلمبیا", "پرو", "استرالیا", "نیوزیلند", "ژاپن", "کره جنوبی", "چین", "هند", "پاکستان", "بنگلادش", "سریلانکا", "مالزی", "سنگاپور", "اندونزی", "تایلند", "ایران", "ویتنام", "فیلیپین", "سایر"];
 function renderProfile() {
   const p = getProfile();
   const u = me();
@@ -1266,7 +1266,7 @@ function renderProfile() {
     '<input id="pf-skills" type="text" placeholder="مثلا: ادیت چالش، تامنیل، موشن" value="' + esc(p.skills || "") + '">' +
     '<label>لینک پورتفولیو / نمونه‌کار</label>' +
     '<input id="pf-portfolio" type="text" placeholder="https://portfoliotub.github.io" value="' + esc(p.portfolio || "") + '">' +
-    '<label>کدام کشور زندگی می‌کنی؟</label>' +
+    '<label>کشور</label>' +
     pickerButton("pf-country", p.country || "", "انتخاب کنید") +
     '<label>درباره من</label>' +
     '<textarea id="pf-bio" placeholder="چند جمله درباره تجربه و سبک کاری…">' + esc(p.bio || "") + "</textarea>" +
@@ -1295,7 +1295,7 @@ function renderProfile() {
   document.getElementById("banner-file").addEventListener("change", function (ev) {
     handleBannerFile(ev.target.files && ev.target.files[0]);
   });
-  wirePicker("pf-country", "کدام کشور زندگی می‌کنی؟", COUNTRIES);
+  wirePicker("pf-country", "کشور", COUNTRIES);
   const bannerImg = document.getElementById("banner-img");
   if (bannerImg) bannerImg.addEventListener("error", function () { bannerImg.remove(); });
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
@@ -1415,7 +1415,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v32 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v33 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
