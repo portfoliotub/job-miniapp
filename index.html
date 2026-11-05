@@ -101,10 +101,10 @@
   .job-row-budget { font-size: 14px; font-weight: 700; color: var(--link); }
   .job-row-date { font-size: 12px; color: var(--hint); margin-top: 2px; }
   /* v35: my-jobs rows are cards — the ad's details sit inline under the
-     row (work type + location, deadline, description), no tap needed.
-     v36: budget + deadline are labeled stat boxes in the same details
-     block (the deadline chip is gone to avoid showing it twice), and the
-     card is NOT clickable anymore — tapping it does nothing. */
+     row, no tap needed. v36: the card is NOT clickable anymore — tapping
+     it does nothing. v37: all details are chips in one row (category,
+     work type + location, deadline, budget); the v36 labeled stat boxes
+     are gone. */
   .my-job-card {
     background: var(--bg);
     border-radius: 16px;
@@ -290,7 +290,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v36</span>
+<span class="app-version" id="app-version">v37</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1138,29 +1138,26 @@ function renderMyJobs() {
     html += state.myJobs.map(function (job) {
       const n = (state.jobApplications[job.id] || []).length;
       // v35: the ad's details are written inline under the row (work type +
-      // location, deadline, description) — the user asked for them to be
-      // visible in the list itself, not only after tapping the ad.
-      // v36: budget + deadline are labeled stat boxes in the same details
-      // block (budget moved out of the header sub-line so it is not shown
-      // twice), and the card carries no click handler anymore — the user
-      // asked for tapping an own ad to do nothing.
+      // v37: ALL details are chips in one row — category next to work
+      // type, then deadline and budget as chips too (the v36 labeled
+      // stat boxes are gone); description below. Card still not clickable.
       return '<div class="my-job-card">' +
         '<div class="job-row">' +
         avatarHtml(job.title) +
         '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
-        '<div class="job-row-sub">' + esc(job.category) + "</div>" +
         '<div class="job-row-status">' + jobStatusBadge(job.status) + "</div></div>" +
         '<div class="job-row-side">' +
         '<div class="job-row-budget">' + n + " درخواست</div>" +
         '<div class="job-row-date">' + fmtDate(job.created_at) + "</div></div>" +
         "</div>" +
-        ((job.work_type || job.budget || job.deadline || job.description) ?
+        ((job.category || job.work_type || job.budget || job.deadline || job.description) ?
           '<div class="my-job-details">' +
-          (job.work_type ? '<div class="meta-row"><span class="chip">' + esc(job.work_type) + (job.location ? " — " + esc(job.location) : "") + "</span></div>" : "") +
-          ((job.budget || job.deadline) ? '<div class="stats">' +
-            (job.budget ? '<div class="stat"><div class="stat-label">بودجه</div><div class="stat-value">' + esc(job.budget) + "</div></div>" : "") +
-            (job.deadline ? '<div class="stat"><div class="stat-label">ددلاین</div><div class="stat-value">' + esc(job.deadline) + "</div></div>" : "") +
-            "</div>" : "") +
+          '<div class="meta-row">' +
+          (job.category ? '<span class="chip">' + esc(job.category) + "</span>" : "") +
+          (job.work_type ? '<span class="chip">' + esc(job.work_type) + (job.location ? " — " + esc(job.location) : "") + "</span>" : "") +
+          (job.deadline ? '<span class="chip">' + esc(job.deadline) + "</span>" : "") +
+          (job.budget ? '<span class="chip">' + esc(job.budget) + "</span>" : "") +
+          "</div>" +
           (job.description ? '<p class="desc">' + esc(job.description) + "</p>" : "") +
           "</div>" : "") +
         "</div>";
@@ -1465,7 +1462,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v36 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v37 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
