@@ -290,7 +290,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v37</span>
+<span class="app-version" id="app-version">v38</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1156,7 +1156,7 @@ function renderMyJobs() {
           (job.category ? '<span class="chip">' + esc(job.category) + "</span>" : "") +
           (job.work_type ? '<span class="chip">' + esc(job.work_type) + (job.location ? " — " + esc(job.location) : "") + "</span>" : "") +
           (job.deadline ? '<span class="chip">' + esc(job.deadline) + "</span>" : "") +
-          (job.budget ? '<span class="chip">' + esc(job.budget) + "</span>" : "") +
+          (job.budget ? '<span class="chip">' + "بودجه " + esc(job.budget) + "</span>" : "") +
           "</div>" +
           (job.description ? '<p class="desc">' + esc(job.description) + "</p>" : "") +
           "</div>" : "") +
@@ -1462,7 +1462,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v37 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v38 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
