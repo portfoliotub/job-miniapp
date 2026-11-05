@@ -246,15 +246,12 @@
   .sort-row { display: flex; gap: 6px; padding: 6px 12px 0; }
   .profile-stats { display: flex; gap: 8px; margin: 10px 12px; }
   .role-switch { margin: 18px 12px 0; }
-  /* v24: role switch next to the profile name — compact blue button,
-     no margins so it sits centred in the card-head row. */
-  .role-switch-inline { margin: 0; padding: 8px 14px; font-size: 14px; flex-shrink: 0; }
   .tile-teal { background: #0e9594; }
 </style>
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v24</span>
+<span class="app-version" id="app-version">v25</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1173,9 +1170,8 @@ function renderProfile() {
   const apps = state.myApplications || [];
   const accepted = apps.filter(function (a) { return a.status === "accepted"; }).length;
   viewEl().innerHTML = "<h2>پروفایل فریلنسری</h2>" +
-    '<div class="card"><div class="card-head">' + avatarHtml(u.name) + '<div style="flex:1;min-width:0"><div class="card-title">' + esc(u.name) + "</div>" +
-    '<div class="meta">' + (u.username ? "@" + esc(u.username) : "فریلنسر") + '</div></div>' +
-    '<button class="btn role-switch-inline" id="switch-role">تغییر نقش</button></div>' +
+    '<div class="card"><div class="card-head">' + avatarHtml(u.name) + '<div><div class="card-title">' + esc(u.name) + "</div>" +
+    '<div class="meta">' + (u.username ? "@" + esc(u.username) : "فریلنسر") + "</div></div></div>" +
     '<div class="profile-stats"><div class="stat"><div class="stat-label">درخواست‌ها</div><div class="stat-value">' + apps.length + '</div></div>' +
     '<div class="stat"><div class="stat-label">قبول‌شده</div><div class="stat-value">' + accepted + "</div></div></div></div>" +
     '<form id="profile-form">' +
@@ -1187,7 +1183,8 @@ function renderProfile() {
     '<input id="pf-rate" type="text" placeholder="مثلا $50 به ازای هر ویدیو" value="' + esc(p.rate || "") + '">' +
     '<label>درباره من</label>' +
     '<textarea id="pf-bio" placeholder="چند جمله درباره تجربه و سبک کاری…">' + esc(p.bio || "") + "</textarea>" +
-    '<button class="btn" type="submit">ذخیره پروفایل</button>' +
+    '<div class="row-btns"><button class="btn" type="submit">ذخیره پروفایل</button>' +
+    '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
     "</form>";
   document.getElementById("profile-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -1316,7 +1313,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v24 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v25 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
