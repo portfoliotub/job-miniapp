@@ -192,6 +192,53 @@
   .row-btns .btn { margin: 0; flex: 1; }
   .back { background: none; border: none; color: var(--link); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; padding: 10px 12px 0; }
   .sample-link { display: block; color: var(--link); text-decoration: none; font-size: 13.5px; word-break: break-all; }
+  /* v41: per-application chat — employer ↔ freelancer. The chat page
+     shows the full request on top, then the message thread, with the
+     composer fixed at the bottom (tab bar hidden while chatting). */
+  .chat-wrap { padding-bottom: 92px; }
+  .chat-head {
+    display: flex; gap: 10px; align-items: center;
+    background: var(--bg); border-radius: 16px;
+    padding: 11px 14px; margin: 10px 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .chat-head .avatar { width: 42px; height: 42px; font-size: 18px; flex-shrink: 0; }
+  .chat-head-name { font-weight: 700; font-size: 15.5px; }
+  .chat-head-sub { font-size: 12.5px; color: var(--hint); margin-top: 1px; }
+  .chat-req { margin-top: 4px; }
+  .chat-msgs { display: flex; flex-direction: column; gap: 8px; padding: 6px 12px 12px; }
+  .msg {
+    max-width: 78%; padding: 9px 12px; border-radius: 14px;
+    font-size: 14.5px; white-space: pre-wrap; word-break: break-word;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06); background: var(--bg);
+  }
+  .msg.mine { align-self: flex-start; background: var(--link); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.theirs { align-self: flex-end; border-bottom-left-radius: 4px; }
+  .msg .msg-time { font-size: 11px; opacity: 0.65; margin-top: 4px; }
+  .msg img.chat-img { max-width: 100%; border-radius: 10px; display: block; cursor: pointer; }
+  .msg img.chat-img.full { max-width: none; width: 100%; }
+  .chat-composer-wrap {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+    background: var(--bg); border-top: 1px solid var(--separator);
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  }
+  .chat-photo-preview { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .chat-photo-preview img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; }
+  .chat-photo-preview button { background: none; border: none; color: var(--destructive); font: inherit; font-size: 15px; cursor: pointer; }
+  .chat-composer { display: flex; gap: 8px; align-items: center; }
+  .chat-composer input { flex: 1; margin: 0; }
+  .chat-photo-btn {
+    flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--secondary-bg); color: var(--link); cursor: pointer;
+  }
+  .chat-photo-btn svg { width: 22px; height: 22px; }
+  .chat-send {
+    flex-shrink: 0; padding: 0 16px; height: 44px;
+    font: inherit; font-size: 15px; font-weight: 700;
+    color: var(--button-text); background: var(--button);
+    border: none; border-radius: 10px; cursor: pointer;
+  }
   .empty { text-align: center; color: var(--hint); padding: 34px 10px; }
   .loading { text-align: center; color: var(--hint); padding: 30px 10px; }
   .error { color: var(--destructive); font-size: 13.5px; padding: 10px 0; }
@@ -300,7 +347,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v40</span>
+<span class="app-version" id="app-version">v41</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -453,22 +500,30 @@ const MOCK_JOBS = [
   { id: 6, employer_id: 777, employer_name: "مریم", title: "ادیتور ویدیو برای کانال آشپزی", category: "ادیت ویدیو", budget: "$120", deadline: "2026-11-14", work_type: "دورکاری", description: "ویدیوی ۱۰ دقیقه‌ای آشپزی؛ ریتم آرام و تمیز.", status: "pending", created_at: "2026-11-03T10:00:00Z" }
 ];
 const MOCK_APPS = [
-  { id: 101, job_id: 3, freelancer_id: 777, freelancer_name: "مریم", samples: "https://drive.google.com/drive/folders/example1\nhttps://youtu.be/example1", price: "$70", message: "سلام! دو سال اسکریپت مستند می‌نویسم؛ نمونه‌ها رو ببینید.", status: "pending", created_at: "2026-11-03T09:10:00Z" },
-  { id: 102, job_id: 3, freelancer_id: 888, freelancer_name: "امیر", samples: "https://drive.google.com/drive/folders/example2", price: "$90", message: "اسکریپت‌نویس کانال‌های آموزشی؛ تحویل ۲ روزه.", status: "pending", created_at: "2026-11-03T07:40:00Z" },
-  { id: 103, job_id: 1, freelancer_id: 111111, freelancer_name: "کالی", samples: "https://portfoliotub.github.io", price: "$140", message: "۵ سال ادیت چالش؛ نمونه‌هام توی پورتفولیو هست.", status: "pending", created_at: "2026-11-03T08:30:00Z" },
-  { id: 104, job_id: 2, freelancer_id: 111111, freelancer_name: "کالی", samples: "https://portfoliotub.github.io", price: "$35", message: "تامنیل گیمینگ زیاد کار کردم.", status: "accepted", created_at: "2026-11-02T16:00:00Z" }
+  { id: 101, job_id: 3, freelancer_id: 777, freelancer_name: "مریم", freelancer_photo: "", freelancer_profile: { skills: "اسکریپت، مستند", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "دو سال اسکریپت مستند می‌نویسم." }, samples: "https://drive.google.com/drive/folders/example1\nhttps://youtu.be/example1", price: "$70", message: "سلام! دو سال اسکریپت مستند می‌نویسم؛ نمونه‌ها رو ببینید.", status: "pending", created_at: "2026-11-03T09:10:00Z" },
+  { id: 102, job_id: 3, freelancer_id: 888, freelancer_name: "امیر", freelancer_photo: "", freelancer_profile: { skills: "اسکریپت", country: "ایران", portfolio: "", bio: "" }, samples: "https://drive.google.com/drive/folders/example2", price: "$90", message: "اسکریپت‌نویس کانال‌های آموزشی؛ تحویل ۲ روزه.", status: "pending", created_at: "2026-11-03T07:40:00Z" },
+  { id: 103, job_id: 1, freelancer_id: 111111, freelancer_name: "کالی", freelancer_photo: "", freelancer_profile: { skills: "ادیت چالش", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "۵ سال ادیت چالش." }, samples: "https://portfoliotub.github.io", price: "$140", message: "۵ سال ادیت چالش؛ نمونه‌هام توی پورتفولیو هست.", status: "pending", created_at: "2026-11-03T08:30:00Z" },
+  { id: 104, job_id: 2, freelancer_id: 111111, freelancer_name: "کالی", freelancer_photo: "", freelancer_profile: { skills: "تامنیل", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "" }, samples: "https://portfoliotub.github.io", price: "$35", message: "تامنیل گیمینگ زیاد کار کردم.", status: "accepted", created_at: "2026-11-02T16:00:00Z" }
+];
+/* v41: mock chat thread for application 101 (employer Kali ↔ مریم). */
+const MOCK_MESSAGES = [
+  { id: 201, application_id: 101, sender_id: 777, sender_name: "مریم", body: "سلام! نمونه‌هام رو دیدید؟", image: "", created_at: "2026-11-03T09:20:00Z" },
+  { id: 202, application_id: 101, sender_id: 111111, sender_name: "کالی", body: "سلام مریم، بله دیدم — خیلی خوبه.", image: "", created_at: "2026-11-03T09:35:00Z" }
 ];
 
 /* ================= state ================= */
 const state = {
   tab: "jobs",
-  view: { name: "jobs" }, // welcome | jobs | job-detail | post | my-apps | my-jobs | job-apps | profile
+  view: { name: "jobs" }, // welcome | jobs | job-detail | post | my-apps | my-jobs | job-apps | chat | profile
   jobFilter: { q: "", cat: "همه", sort: "new" },
   jobs: [],
   pendingJobs: [], // admin-only moderation queue (status pending)
   myApplications: [],
   myJobs: [],
   jobApplications: {}, // jobId -> [applications]
+  chatMessages: {}, // applicationId -> [messages]
+  chatTimer: null, // polling interval while a chat is open
+  chatImage: null, // pending photo (data URL) attached to the next message
   jobById: {},
   loading: false,
   error: ""
@@ -513,6 +568,37 @@ function userAvatarHtml(u) {
   return '<div class="avatar" style="background:' + avatarColor(u.name) + '">' +
     esc(String(u.name || "?").trim().charAt(0) || "?") + photo + "</div>";
 }
+/* v41: avatar with an optional photo URL (the freelancer's Telegram
+   photo, stored on the application at apply time). Falls back to the
+   letter avatar when there is no photo or it fails to load. */
+function photoAvatarHtml(name, photo) {
+  const img = photo
+    ? '<img class="avatar-photo" src="' + esc(photo) + '" alt="">'
+    : "";
+  return '<div class="avatar" style="background:' + avatarColor(name) + '">' +
+    esc(String(name || "?").trim().charAt(0) || "?") + img + "</div>";
+}
+/* v41: the freelancer's public profile, snapshotted onto the application
+   at apply time so the employer can see it in the list and in the chat.
+   The banner is left out — it is a large data URL and lives locally. */
+function profileSnapshot() {
+  const p = getProfile();
+  return {
+    skills: p.skills || "",
+    portfolio: p.portfolio || "",
+    country: p.country || "",
+    bio: p.bio || ""
+  };
+}
+function profileChips(p) {
+  if (!p) return "";
+  const out = [];
+  String(p.skills || "").split(/[,،]+/).map(function (s) { return s.trim(); }).filter(Boolean).forEach(function (s) {
+    out.push('<span class="chip">' + esc(s) + "</span>");
+  });
+  if (p.country) out.push('<span class="chip">' + esc(p.country) + "</span>");
+  return out.join("");
+}
 /* Inline SVG icons (no emoji) — Telegram-style line icons. */
 const ICONS = {
   check: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
@@ -521,7 +607,9 @@ const ICONS = {
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
   camera: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
   edit: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
-  chevron: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+  chevron: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
+  image: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
 };
 /* Freelancer profile banner (v27): YouTube channel-art style cover,
    2560×423 display strip. v29: the banner is the TOP of the profile card
@@ -701,10 +789,13 @@ async function loadMyApplications() {
   const ids = state.myApplications.map(function (a) { return a.job_id; });
   if (ids.length) {
     try {
-      const rows = await sbSelect("jobs", { select: "id,title", id: "in.(" + ids.join(",") + ")" });
+      const rows = await sbSelect("jobs", { select: "id,title,employer_name", id: "in.(" + ids.join(",") + ")" });
       const map = {};
-      rows.forEach(function (j) { map[j.id] = j.title; });
-      state.myApplications.forEach(function (a) { a.job_title = map[a.job_id] || ("آگهی #" + a.job_id); });
+      rows.forEach(function (j) { map[j.id] = j; });
+      state.myApplications.forEach(function (a) {
+        a.job_title = map[a.job_id] ? map[a.job_id].title : ("آگهی #" + a.job_id);
+        a.job_employer = map[a.job_id] ? map[a.job_id].employer_name : "";
+      });
     } catch (e) {}
   }
 }
@@ -768,6 +859,7 @@ function mockApply(p) {
   const id = Math.max.apply(null, MOCK_APPS.map(function (a) { return a.id; }).concat([0])) + 1;
   MOCK_APPS.unshift({
     id: id, job_id: p.job_id, freelancer_id: me().id, freelancer_name: me().name,
+    freelancer_photo: me().photo, freelancer_profile: profileSnapshot(),
     samples: p.samples || "", price: p.price || "", message: p.message || "",
     status: "pending", created_at: new Date().toISOString()
   });
@@ -950,7 +1042,9 @@ async function submitApply(ev, jobId) {
     job_id: jobId,
     samples: document.getElementById("f-samples").value.trim(),
     price: document.getElementById("f-price").value.trim(),
-    message: document.getElementById("f-message").value.trim()
+    message: document.getElementById("f-message").value.trim(),
+    freelancer_photo: me().photo,
+    freelancer_profile: profileSnapshot()
   };
   if (!payload.samples || !payload.price) {
     showToast("لینک نمونه‌کار و قیمت را وارد کنید");
@@ -967,6 +1061,7 @@ async function submitApply(ev, jobId) {
   try {
     const row = await sbInsert("applications", {
       job_id: jobId, freelancer_id: me().id, freelancer_name: me().name,
+      freelancer_photo: me().photo, freelancer_profile: profileSnapshot(),
       samples: payload.samples, price: payload.price, message: payload.message,
       status: "pending"
     });
@@ -1125,17 +1220,22 @@ function renderMyApplications() {
     html += state.myApplications.map(function (a) {
       const job = state.jobById[a.job_id];
       const title = a.job_title || (job ? job.title : "آگهی #" + a.job_id);
-      return '<div class="card">' +
+      // v41: tapping the request opens its chat (full request + thread).
+      return '<div class="card clickable" data-app-card="' + a.id + '">' +
         '<div class="card-head">' + avatarHtml(title) + '<div class="card-title">' + esc(title) + "</div></div>" +
         '<div class="meta-row">' + statusBadge(a.status) +
         (a.price ? '<span class="meta">پیشنهاد شما: ' + esc(a.price) + "</span>" : "") +
         '<span class="meta">' + fmtDate(a.created_at) + "</span></div>" +
         (a.message ? '<p class="desc">' + esc(a.message) + "</p>" : "") +
+        '<div class="row-btns"><button class="btn btn-ghost" type="button" data-chat="' + a.id + '">' + ICONS.chat + " چت با کارفرما</button></div>" +
         "</div>";
     }).join("");
   }
   // v24: no role switch here — it lives only in the freelancer profile.
   viewEl().innerHTML = html;
+  viewEl().querySelectorAll("[data-app-card]").forEach(function (el) {
+    el.addEventListener("click", function () { openChat(parseInt(el.getAttribute("data-app-card"), 10), { tab: "my-apps" }); });
+  });
 }
 
 function renderMyJobs() {
@@ -1222,24 +1322,37 @@ function renderJobApplications() {
     html += emptyState("هنوز درخواستی برای این آگهی نیست", "وقتی فریلنسری درخواست بده، اینجا می‌بینی.");
   } else {
     html += apps.map(function (a) {
-      let h = '<div class="card">' +
-        '<div class="card-head">' + avatarHtml(a.freelancer_name || "فریلنسر") + '<div class="card-title">' + esc(a.freelancer_name || "فریلنسر") + "</div></div>" +
+      // v41: the freelancer's name + photo + profile (skills, country)
+      // show on the request; tapping it opens the chat with them.
+      const prof = a.freelancer_profile || null;
+      let h = '<div class="card clickable" data-app-card="' + a.id + '">' +
+        '<div class="card-head">' + photoAvatarHtml(a.freelancer_name || "فریلنسر", a.freelancer_photo || "") + '<div class="card-title">' + esc(a.freelancer_name || "فریلنسر") + "</div></div>" +
         '<div class="meta-row">' + statusBadge(a.status) +
         (a.price ? '<span class="meta">قیمت پیشنهادی: ' + esc(a.price) + "</span>" : "") +
         '<span class="meta">' + fmtDate(a.created_at) + "</span></div>" +
+        (profileChips(prof) ? '<div class="meta-row">' + profileChips(prof) + "</div>" : "") +
         '<div class="meta">نمونه‌کارها:</div>' + sampleLinks(a.samples) +
         (a.message ? '<p class="desc">' + esc(a.message) + "</p>" : "");
+      h += '<div class="row-btns">' +
+        '<button class="btn btn-ghost" type="button" data-chat="' + a.id + '">' + ICONS.chat + " چت</button>";
       if (a.status === "pending") {
-        h += '<div class="row-btns">' +
-          '<button class="btn" data-accept="' + a.id + '">' + ICONS.check + " قبول</button>" +
-          '<button class="btn btn-danger" data-reject="' + a.id + '">' + ICONS.x + " رد</button>" +
-          "</div>";
+        h += '<button class="btn" data-accept="' + a.id + '">' + ICONS.check + " قبول</button>" +
+          '<button class="btn btn-danger" data-reject="' + a.id + '">' + ICONS.x + " رد</button>";
       }
+      h += "</div>";
       return h + "</div>";
     }).join("");
   }
   viewEl().innerHTML = html;
   bindBack("my-jobs");
+  viewEl().querySelectorAll("[data-app-card]").forEach(function (el) {
+    el.addEventListener("click", function (ev) {
+      // Accept/reject keep their own action — everything else on the
+      // card (including the chat button) opens the chat.
+      if (ev.target.closest("[data-accept],[data-reject]")) return;
+      openChat(parseInt(el.getAttribute("data-app-card"), 10), { tab: "job-apps", jobId: jobId });
+    });
+  });
   viewEl().querySelectorAll("[data-accept]").forEach(function (el) {
     el.addEventListener("click", function () { setAppStatus(parseInt(el.getAttribute("data-accept"), 10), "accepted"); });
   });
@@ -1265,6 +1378,231 @@ function mockSetJobStatus(p) {
     list.forEach(function (j) { if (j.id === p.job_id) j.status = p.status; });
   });
   if (state.jobById[p.job_id]) state.jobById[p.job_id].status = p.status;
+}
+
+/* ================= chat per application (v41) =================
+   Employer ↔ freelancer thread for one application. The chat page shows
+   the other party's name + photo, the full request on top (freelancer
+   profile, samples, price, message), then the thread, with text + photo
+   sending. Messages live in the Supabase `messages` table; while the
+   chat is open the thread is re-read every 5s (polling — no realtime
+   subscription in this plain-fetch client). */
+function findApplication(appId) {
+  let found = null;
+  state.myApplications.forEach(function (a) { if (a.id === appId) found = a; });
+  if (found) return found;
+  Object.keys(state.jobApplications).forEach(function (k) {
+    state.jobApplications[k].forEach(function (a) { if (a.id === appId) found = a; });
+  });
+  if (found) return found;
+  if (MOCK) return MOCK_APPS.find(function (a) { return a.id === appId; }) || null;
+  return null;
+}
+async function loadChatMessages(appId) {
+  if (MOCK) {
+    state.chatMessages[appId] = MOCK_MESSAGES.filter(function (m) { return m.application_id === appId; })
+      .slice().sort(function (a, b) { return a.created_at.localeCompare(b.created_at); });
+    return;
+  }
+  state.chatMessages[appId] = await sbSelect("messages", { select: "*", application_id: "eq." + appId, order: "created_at.asc" }) || [];
+}
+function fmtTime(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("fa-IR") + " " + d.toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" });
+  } catch (e) { return ""; }
+}
+function chatMessagesHtml() {
+  const list = state.chatMessages[state.view.applicationId] || [];
+  if (!list.length) return '<div class="muted" style="text-align:center;padding:14px 0;">هنوز پیامی نیست — اولین پیام را بفرستید.</div>';
+  return list.map(function (m) {
+    const mine = m.sender_id === me().id;
+    let inner = "";
+    if (m.image) inner += '<img class="chat-img" src="' + esc(m.image) + '" alt="">';
+    if (m.body) inner += "<div>" + esc(m.body) + "</div>";
+    inner += '<div class="msg-time">' + fmtTime(m.created_at) + "</div>";
+    return '<div class="msg ' + (mine ? "mine" : "theirs") + '">' + inner + "</div>";
+  }).join("");
+}
+function refreshChatMessages() {
+  const box = document.getElementById("chat-msgs");
+  if (!box || state.view.name !== "chat") return;
+  const before = box.querySelectorAll(".msg").length;
+  box.innerHTML = chatMessagesHtml();
+  box.querySelectorAll(".chat-img").forEach(function (img) {
+    img.addEventListener("click", function () { img.classList.toggle("full"); });
+  });
+  const after = box.querySelectorAll(".msg").length;
+  if (after > before) setTimeout(function () { window.scrollTo(0, document.body.scrollHeight); }, 50);
+}
+function stopChatPolling() {
+  if (state.chatTimer) { clearInterval(state.chatTimer); state.chatTimer = null; }
+}
+function startChatPolling(appId) {
+  stopChatPolling();
+  state.chatTimer = setInterval(function () {
+    if (state.view.name !== "chat" || state.view.applicationId !== appId) { stopChatPolling(); return; }
+    loadChatMessages(appId).then(refreshChatMessages).catch(function () {});
+  }, 5000);
+}
+async function openChat(appId, back) {
+  stopChatPolling();
+  let app = findApplication(appId);
+  if (!app && !MOCK) {
+    try {
+      const rows = await sbSelect("applications", { select: "*", id: "eq." + appId });
+      app = rows && rows[0];
+    } catch (e) {}
+  }
+  if (!app) { showToast("درخواست پیدا نشد"); return; }
+  let job = state.jobById[app.job_id] || null;
+  if (!job) {
+    if (MOCK) job = MOCK_JOBS.find(function (j) { return j.id === app.job_id; }) || null;
+    else {
+      try {
+        const rows = await sbSelect("jobs", { select: "*", id: "eq." + app.job_id });
+        job = rows && rows[0];
+        if (job) state.jobById[job.id] = job;
+      } catch (e) {}
+    }
+  }
+  state.view = { name: "chat", applicationId: app.id, back: back, app: app, job: job };
+  state.chatImage = null;
+  state.loading = true;
+  render();
+  try { await loadChatMessages(app.id); state.loading = false; } catch (e) { state.loading = false; state.error = "خطا در بارگذاری پیام‌ها: " + e.message; }
+  render();
+  startChatPolling(app.id);
+}
+function renderChat() {
+  const app = state.view.app;
+  const job = state.view.job;
+  const iAmFreelancer = me().id === app.freelancer_id;
+  const otherName = iAmFreelancer
+    ? (job ? (job.employer_name || "کارفرما") : (app.job_employer || "کارفرما"))
+    : (app.freelancer_name || "فریلنسر");
+  const otherPhoto = iAmFreelancer ? "" : (app.freelancer_photo || "");
+  const jobTitle = job ? job.title : (app.job_title || ("آگهی #" + app.job_id));
+  const prof = app.freelancer_profile || null;
+  let html = '<button class="back" data-back>› بازگشت</button>' +
+    '<div class="chat-wrap">' +
+    '<div class="chat-head">' + photoAvatarHtml(otherName, otherPhoto) +
+    '<div><div class="chat-head-name">' + esc(otherName) + '</div><div class="chat-head-sub">' + esc(jobTitle) + "</div></div></div>";
+  // The full request, on top of the thread.
+  html += '<div class="card chat-req"><div class="card-head">' + photoAvatarHtml(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
+    '<div><div class="card-title">' + esc(app.freelancer_name || "فریلنسر") + '</div><div class="meta">درخواست برای «' + esc(jobTitle) + "»</div></div></div>" +
+    '<div class="meta-row">' + statusBadge(app.status) +
+    (app.price ? '<span class="meta">قیمت پیشنهادی: ' + esc(app.price) + "</span>" : "") +
+    '<span class="meta">' + fmtDate(app.created_at) + "</span></div>" +
+    (profileChips(prof) ? '<div class="meta-row">' + profileChips(prof) + "</div>" : "") +
+    (prof && prof.bio ? '<p class="desc">' + esc(prof.bio) + "</p>" : "") +
+    (prof && prof.portfolio ? '<a class="sample-link" href="' + esc(prof.portfolio) + '" target="_blank" rel="noopener">' + ICONS.link + " پورتفولیو</a>" : "") +
+    '<div class="meta">نمونه‌کارها:</div>' + sampleLinks(app.samples) +
+    (app.message ? '<p class="desc">' + esc(app.message) + "</p>" : "") +
+    "</div>";
+  html += '<div class="chat-msgs" id="chat-msgs">' +
+    (state.loading ? '<div class="loading">در حال بارگذاری…</div>' : chatMessagesHtml()) +
+    "</div></div>" +
+    '<div class="chat-composer-wrap">' +
+    '<div class="chat-photo-preview" id="chat-photo-preview" hidden><img id="chat-photo-thumb" alt=""><button type="button" id="chat-photo-remove">حذف ✕</button></div>' +
+    '<div class="chat-composer">' +
+    '<label class="chat-photo-btn" for="chat-photo-file" aria-label="فرستادن عکس">' + ICONS.image + "</label>" +
+    '<input type="file" id="chat-photo-file" accept="image/*" hidden>' +
+    '<input id="chat-input" type="text" placeholder="پیام بنویسید…" autocomplete="off">' +
+    '<button class="chat-send" id="chat-send" type="button">ارسال</button>' +
+    "</div></div>";
+  viewEl().innerHTML = html;
+  viewEl().querySelector("[data-back]").addEventListener("click", function () {
+    stopChatPolling();
+    const back = state.view.back;
+    if (back && back.tab === "job-apps") openJobApplications(back.jobId);
+    else switchTab("my-apps");
+  });
+  document.getElementById("chat-send").addEventListener("click", sendChatMessage);
+  document.getElementById("chat-input").addEventListener("keydown", function (ev) { if (ev.key === "Enter") sendChatMessage(); });
+  document.getElementById("chat-photo-file").addEventListener("change", function () { handleChatPhoto(this.files && this.files[0]); this.value = ""; });
+  document.getElementById("chat-photo-remove").addEventListener("click", function () { state.chatImage = null; document.getElementById("chat-photo-preview").hidden = true; });
+  viewEl().querySelectorAll(".chat-img").forEach(function (img) {
+    img.addEventListener("click", function () { img.classList.toggle("full"); });
+  });
+  setTimeout(function () { window.scrollTo(0, document.body.scrollHeight); }, 50);
+}
+/* v41: a chat photo is downscaled to max 1024px (JPEG) before sending,
+   so it fits in a messages row as a data URL. */
+function handleChatPhoto(file) {
+  if (!file) return;
+  if (file.type.indexOf("image/") !== 0) { showToast("فایل عکس انتخاب کنید"); return; }
+  const reader = new FileReader();
+  reader.onload = function () {
+    const img = new Image();
+    img.onload = function () {
+      const scale = Math.min(1, 1024 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      state.chatImage = canvas.toDataURL("image/jpeg", 0.8);
+      const prev = document.getElementById("chat-photo-preview");
+      const thumb = document.getElementById("chat-photo-thumb");
+      if (prev && thumb) { thumb.src = state.chatImage; prev.hidden = false; }
+    };
+    img.onerror = function () { showToast("خواندن عکس ممکن نشد"); };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+async function sendChatMessage() {
+  const input = document.getElementById("chat-input");
+  const body = input ? input.value.trim() : "";
+  const image = state.chatImage;
+  if (!body && !image) return;
+  const app = state.view.app;
+  const job = state.view.job;
+  const appId = state.view.applicationId;
+  if (input) input.value = "";
+  state.chatImage = null;
+  const prev = document.getElementById("chat-photo-preview");
+  if (prev) prev.hidden = true;
+  if (MOCK) {
+    const row = {
+      id: Math.max.apply(null, MOCK_MESSAGES.map(function (m) { return m.id; }).concat([0])) + 1,
+      application_id: appId, sender_id: me().id, sender_name: me().name,
+      body: body, image: image || "", created_at: new Date().toISOString()
+    };
+    MOCK_MESSAGES.push(row);
+    state.chatMessages[appId] = (state.chatMessages[appId] || []).concat([row]);
+    refreshChatMessages();
+  } else {
+    try {
+      const saved = await sbInsert("messages", {
+        application_id: appId, sender_id: me().id, sender_name: me().name,
+        body: body, image: image || ""
+      });
+      if (saved) {
+        state.chatMessages[appId] = (state.chatMessages[appId] || []).concat([saved]);
+        refreshChatMessages();
+      } else {
+        await loadChatMessages(appId);
+        refreshChatMessages();
+      }
+    } catch (e) {
+      showToast("پیام فرستاده نشد — دوباره امتحان کن");
+      return;
+    }
+  }
+  // Best-effort Telegram push so the other side hears about it.
+  const toId = (me().id === app.freelancer_id)
+    ? (job ? job.employer_id : null)
+    : app.freelancer_id;
+  if (toId && toId !== me().id) {
+    sendViaTelegram({
+      type: "chat_message", application_id: appId, to_id: toId,
+      job_title: job ? job.title : (app.job_title || ""),
+      from_name: me().name, preview: body ? body.slice(0, 80) : "📷 عکس"
+    });
+  }
 }
 
 /* ================= welcome & profile (v18) ================= */
@@ -1390,14 +1728,18 @@ function buildTabs() {
 /* ================= tabs & render ================= */
 function renderTabs() {
   const active = state.view.name === "job-detail" ? "jobs"
-    : state.view.name === "job-apps" ? "my-jobs" : state.view.name;
+    : state.view.name === "job-apps" ? "my-jobs"
+    : state.view.name === "chat" ? (state.view.back && state.view.back.tab === "job-apps" ? "my-jobs" : "my-apps")
+    : state.view.name;
   document.querySelectorAll("#tabs button").forEach(function (btn) {
     btn.classList.toggle("active", btn.getAttribute("data-tab") === active);
   });
 }
 function render() {
-  // The welcome screen has no tab bar (choose a role first).
-  document.getElementById("tabs").style.display = state.view.name === "welcome" ? "none" : "";
+  stopChatPolling();
+  // The welcome screen has no tab bar (choose a role first); neither does
+  // the chat page (it has its own back button + fixed composer).
+  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "chat") ? "none" : "";
   renderTabs();
   switch (state.view.name) {
     case "welcome": renderWelcome(); break;
@@ -1407,6 +1749,7 @@ function render() {
     case "my-apps": renderMyApplications(); break;
     case "my-jobs": renderMyJobs(); break;
     case "job-apps": renderJobApplications(); break;
+    case "chat": renderChat(); break;
     case "profile": renderProfile(); break;
     default: renderJobs();
   }
@@ -1455,6 +1798,12 @@ async function switchTab(tab) {
 /* ================= init ================= */
 (function init() {
   buildTabs();
+  // v41: a failed avatar photo URL (e.g. an expired Telegram photo_url)
+  // is removed so the letter avatar underneath shows instead.
+  document.addEventListener("error", function (ev) {
+    const t = ev.target;
+    if (t && t.classList && t.classList.contains("avatar-photo")) t.remove();
+  }, true);
   const u = me();
   document.getElementById("mock-badge").hidden = !MOCK;
   // Diagnostics line (readable on the phone): version, real/preview mode,
@@ -1466,7 +1815,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v40 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v41 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -1487,7 +1836,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openChat: openChat };
 </script>
 </body>
 </html>
