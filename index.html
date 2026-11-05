@@ -69,7 +69,10 @@
     width: 46px; height: 46px; border-radius: 50%;
     color: #fff; font-size: 19px; font-weight: 700;
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    position: relative; overflow: hidden;
   }
+  /* v26: real Telegram photo laid over the letter avatar (profile only). */
+  .avatar-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
   .job-row-text { flex: 1; min-width: 0; }
   .job-row-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .job-row-sub { font-size: 13.5px; color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -251,7 +254,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v25</span>
+<span class="app-version" id="app-version">v26</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -322,11 +325,12 @@ function me() {
     return {
       id: tgUser.id,
       name: [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") || "کاربر",
-      username: tgUser.username || ""
+      username: tgUser.username || "",
+      photo: tgUser.photo_url || ""
     };
   }
   // Preview identity in mock mode.
-  return { id: 111111, name: "کالی", username: "kali_tub" };
+  return { id: 111111, name: "کالی", username: "kali_tub", photo: "" };
 }
 /* Admin (Kali) approves other employers' ads. In preview mode the mock user
    is Kali, so the admin UI shows there too. */
@@ -451,6 +455,17 @@ function avatarColor(name) {
 function avatarHtml(name) {
   const letter = String(name || "?").trim().charAt(0) || "?";
   return '<div class="avatar" style="background:' + avatarColor(name) + '">' + esc(letter) + "</div>";
+}
+/* Freelancer profile photo (v26): the user's real Telegram photo when
+   Telegram supplies one (initDataUnsafe.user.photo_url); otherwise the
+   letter avatar above. The photo is laid over the letter, so if the URL
+   fails to load the img is removed and the letter shows instead. */
+function userAvatarHtml(u) {
+  const photo = u.photo
+    ? '<img class="avatar-photo" src="' + esc(u.photo) + '" alt="">'
+    : "";
+  return '<div class="avatar" style="background:' + avatarColor(u.name) + '">' +
+    esc(String(u.name || "?").trim().charAt(0) || "?") + photo + "</div>";
 }
 /* Inline SVG icons (no emoji) — Telegram-style line icons. */
 const ICONS = {
@@ -1170,7 +1185,7 @@ function renderProfile() {
   const apps = state.myApplications || [];
   const accepted = apps.filter(function (a) { return a.status === "accepted"; }).length;
   viewEl().innerHTML = "<h2>پروفایل فریلنسری</h2>" +
-    '<div class="card"><div class="card-head">' + avatarHtml(u.name) + '<div><div class="card-title">' + esc(u.name) + "</div>" +
+    '<div class="card"><div class="card-head">' + userAvatarHtml(u) + '<div><div class="card-title">' + esc(u.name) + "</div>" +
     '<div class="meta">' + (u.username ? "@" + esc(u.username) : "فریلنسر") + "</div></div></div>" +
     '<div class="profile-stats"><div class="stat"><div class="stat-label">درخواست‌ها</div><div class="stat-value">' + apps.length + '</div></div>' +
     '<div class="stat"><div class="stat-label">قبول‌شده</div><div class="stat-value">' + accepted + "</div></div></div></div>" +
@@ -1196,6 +1211,9 @@ function renderProfile() {
     });
     showToast("پروفایل ذخیره شد ✓");
   });
+  // v26: a dead photo URL falls back to the letter avatar.
+  const photoImg = viewEl().querySelector(".avatar-photo");
+  if (photoImg) photoImg.addEventListener("error", function () { photoImg.remove(); });
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
 }
 
@@ -1313,7 +1331,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v25 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v26 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
