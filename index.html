@@ -87,11 +87,12 @@
      attribute's UA display:none — without this the editor was always open. */
   .banner-editor[hidden] { display: none; }
   /* v29: banner and profile are ONE card (YouTube channel style) — the
-     banner is the card's top, the avatar overlaps its bottom edge. */
+     banner is the card's top, the avatar overlaps its bottom edge. v30:
+     avatar + name/ID are CENTRED (column layout) so the name sits below
+     the banner, not on it; the two stat boxes are removed. */
   .profile-card { padding: 0; overflow: hidden; }
-  .profile-card .card-head { padding: 0 14px; margin: -19px 0 6px; position: relative; }
+  .profile-card .card-head { flex-direction: column; align-items: center; text-align: center; padding: 0 14px; margin: -19px 0 13px; position: relative; }
   .profile-card .avatar { box-shadow: 0 0 0 3px var(--bg); }
-  .profile-card .profile-stats { margin: 10px 14px; }
   .profile-card .banner-editor { margin: 0 14px 13px; }
   .banner-url-row { display: flex; gap: 8px; }
   .banner-url-row input { flex: 1; min-width: 0; }
@@ -277,7 +278,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v29</span>
+<span class="app-version" id="app-version">v30</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1260,15 +1261,11 @@ function showWelcome() {
 function renderProfile() {
   const p = getProfile();
   const u = me();
-  const apps = state.myApplications || [];
-  const accepted = apps.filter(function (a) { return a.status === "accepted"; }).length;
   viewEl().innerHTML = "<h2>پروفایل فریلنسری</h2>" +
     '<div class="card profile-card">' +
     bannerHtml(p) +
     '<div class="card-head">' + userAvatarHtml(u) + '<div><div class="card-title">' + esc(u.name) + "</div>" +
     '<div class="meta">' + (u.username ? "@" + esc(u.username) : "فریلنسر") + "</div></div></div>" +
-    '<div class="profile-stats"><div class="stat"><div class="stat-label">درخواست‌ها</div><div class="stat-value">' + apps.length + '</div></div>' +
-    '<div class="stat"><div class="stat-label">قبول‌شده</div><div class="stat-value">' + accepted + "</div></div></div>" +
     bannerEditorHtml(p) +
     "</div>" +
     '<form id="profile-form">' +
@@ -1451,7 +1448,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v29 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v30 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
