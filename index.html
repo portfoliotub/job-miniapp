@@ -81,6 +81,9 @@
   .banner-empty .muted { color: rgba(255,255,255,.85); font-size: 13px; }
   .banner-edit { position: absolute; right: 8px; bottom: 8px; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
   .banner-editor { background: var(--secondary-bg); border-radius: 12px; padding: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
+  /* v27 fix: .banner-editor sets display:flex, which overrides the hidden
+     attribute's UA display:none — without this the editor was always open. */
+  .banner-editor[hidden] { display: none; }
   .banner-url-row { display: flex; gap: 8px; }
   .banner-url-row input { flex: 1; min-width: 0; }
   .banner-hint { font-size: 12.5px; }
