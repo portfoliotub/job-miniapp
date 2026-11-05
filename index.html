@@ -300,7 +300,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v39</span>
+<span class="app-version" id="app-version">v40</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1146,19 +1146,13 @@ function renderMyJobs() {
     html += emptyState("هنوز آگهی ثبت نکرده‌اید", "از تب «ثبت آگهی» شروع کنید.");
   } else {
     html += state.myJobs.map(function (job) {
-      const n = (state.jobApplications[job.id] || []).length;
-      // v35: the ad's details are written inline under the row (work type +
-      // v37: ALL details are chips in one row — category next to work
-      // type, then deadline and budget as chips too (the v36 labeled
-      // stat boxes are gone); description below. Card still not clickable.
+      // v40: per user's screenshot — the avatar circle and the
+      // request-count/date side block are REMOVED from my-jobs cards.
+      // Details (chips + description) stay inline under the row.
       return '<div class="my-job-card">' +
         '<div class="job-row">' +
-        avatarHtml(job.title) +
         '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
         '<div class="job-row-status">' + jobStatusBadge(job.status) + "</div></div>" +
-        '<div class="job-row-side">' +
-        '<div class="job-row-budget">' + n + " درخواست</div>" +
-        '<div class="job-row-date">' + fmtDate(job.created_at) + "</div></div>" +
         "</div>" +
         ((job.category || job.work_type || job.budget || job.deadline || job.description) ?
           '<div class="my-job-details">' +
@@ -1472,7 +1466,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v39 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v40 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
