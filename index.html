@@ -78,9 +78,9 @@
      16:9 was too tall; the upload size stays 2560×1440. */
   .banner-wrap { position: relative; border-radius: 0; overflow: hidden; aspect-ratio: 2560 / 423; background: linear-gradient(135deg, #2481cc 0%, #6ab3f0 55%, #9fd0f7 100%); cursor: pointer; }
   .banner-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .banner-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #fff; }
-  .banner-empty .banner-title { font-weight: 700; font-size: 15px; }
-  .banner-empty .muted { color: rgba(255,255,255,.85); font-size: 13px; }
+  .banner-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #fff; padding-bottom: 30px; }
+  .banner-empty .banner-title { font-weight: 700; font-size: 15px; line-height: 1.3; }
+  .banner-empty .muted { color: rgba(255,255,255,.85); font-size: 13px; line-height: 1.3; }
   .banner-edit { position: absolute; left: 8px; bottom: 8px; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
   .banner-editor { background: var(--secondary-bg); border-radius: 12px; padding: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
   /* v27 fix: .banner-editor sets display:flex, which overrides the hidden
@@ -278,7 +278,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v30</span>
+<span class="app-version" id="app-version">v31</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -509,7 +509,7 @@ const ICONS = {
 function bannerHtml(p) {
   const img = p.banner
     ? '<img class="banner-img" id="banner-img" src="' + esc(p.banner) + '" alt="">'
-    : '<div class="banner-empty">' + ICONS.camera + '<div class="banner-title">بنر پروفایل</div><div class="muted">برای افزودن عکس بزنید</div></div>';
+    : '<div class="banner-empty"><div class="banner-title">بنر پروفایل</div><div class="muted">برای افزودن عکس بزنید</div></div>';
   return '<div class="banner-wrap" id="banner-wrap">' + img +
     '<button class="banner-edit" id="banner-edit" type="button" aria-label="ویرایش بنر">' + ICONS.edit + '</button></div>' +
     '<input type="file" id="banner-file" accept="image/*" hidden>';
@@ -1448,7 +1448,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v30 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v31 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
