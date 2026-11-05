@@ -347,7 +347,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v41</span>
+<span class="app-version" id="app-version">v42</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1478,28 +1478,16 @@ async function openChat(appId, back) {
 }
 function renderChat() {
   const app = state.view.app;
-  const job = state.view.job;
-  const iAmFreelancer = me().id === app.freelancer_id;
-  const otherName = iAmFreelancer
-    ? (job ? (job.employer_name || "کارفرما") : (app.job_employer || "کارفرما"))
-    : (app.freelancer_name || "فریلنسر");
-  const otherPhoto = iAmFreelancer ? "" : (app.freelancer_photo || "");
-  const jobTitle = job ? job.title : (app.job_title || ("آگهی #" + app.job_id));
   const prof = app.freelancer_profile || null;
+  // v42: per the user's screenshot — the chat top is ONLY the requester's
+  // name + profile (skills, country) and the description of their request
+  // (their message). The other-party header and the full request card
+  // (status, price, date, bio, portfolio, samples) are gone.
   let html = '<button class="back" data-back>› بازگشت</button>' +
     '<div class="chat-wrap">' +
-    '<div class="chat-head">' + photoAvatarHtml(otherName, otherPhoto) +
-    '<div><div class="chat-head-name">' + esc(otherName) + '</div><div class="chat-head-sub">' + esc(jobTitle) + "</div></div></div>";
-  // The full request, on top of the thread.
-  html += '<div class="card chat-req"><div class="card-head">' + photoAvatarHtml(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
-    '<div><div class="card-title">' + esc(app.freelancer_name || "فریلنسر") + '</div><div class="meta">درخواست برای «' + esc(jobTitle) + "»</div></div></div>" +
-    '<div class="meta-row">' + statusBadge(app.status) +
-    (app.price ? '<span class="meta">قیمت پیشنهادی: ' + esc(app.price) + "</span>" : "") +
-    '<span class="meta">' + fmtDate(app.created_at) + "</span></div>" +
+    '<div class="card chat-req"><div class="card-head">' + photoAvatarHtml(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
+    '<div class="card-title">' + esc(app.freelancer_name || "فریلنسر") + "</div></div>" +
     (profileChips(prof) ? '<div class="meta-row">' + profileChips(prof) + "</div>" : "") +
-    (prof && prof.bio ? '<p class="desc">' + esc(prof.bio) + "</p>" : "") +
-    (prof && prof.portfolio ? '<a class="sample-link" href="' + esc(prof.portfolio) + '" target="_blank" rel="noopener">' + ICONS.link + " پورتفولیو</a>" : "") +
-    '<div class="meta">نمونه‌کارها:</div>' + sampleLinks(app.samples) +
     (app.message ? '<p class="desc">' + esc(app.message) + "</p>" : "") +
     "</div>";
   html += '<div class="chat-msgs" id="chat-msgs">' +
@@ -1815,7 +1803,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v41 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v42 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
