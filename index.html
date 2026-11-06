@@ -371,7 +371,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v51</span>
+<span class="app-version" id="app-version">v52</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1443,6 +1443,8 @@ function renderChat() {
   // inner box, no separate sections (the user asked «در یه پیام واحد
   // باشه»). The ad title + samples moved here from the list card in
   // v50 (the list shows only the first line now).
+  // v52: the «نمونه‌کارها:» label above the links is gone too — the
+  // sample links follow the message directly, one uniform message.
   var job = (state.jobs || []).find(function (j) { return j.id === app.job_id; });
   var jobTitle = app.job_title || (job && job.title);
   let html = '<button class="back" data-back>› بازگشت</button>' +
@@ -1451,7 +1453,7 @@ function renderChat() {
     '<div class="card-title">' + esc(app.freelancer_name || "فریلنسر") + "</div></div>" +
     (jobTitle ? '<div class="recv-job">برای آگهی: ' + esc(jobTitle) + "</div>" : "") +
     (app.message ? '<p class="desc">' + esc(app.message) + "</p>" : "") +
-    (app.samples ? '<div class="meta">نمونه‌کارها:</div>' + sampleLinks(app.samples) : "") +
+    (app.samples ? sampleLinks(app.samples) : "") +
     "</div>";
   html += '<div class="chat-msgs" id="chat-msgs">' +
     (state.loading ? '<div class="loading">در حال بارگذاری…</div>' : chatMessagesHtml()) +
@@ -1767,7 +1769,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v51 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v52 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
