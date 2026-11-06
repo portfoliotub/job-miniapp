@@ -137,16 +137,20 @@
   .my-job-reqs { margin-top: 10px; }
   .req-count { font-size: 13.5px; font-weight: 700; }
   .my-job-reqs .row-btns { margin-top: 8px; }
-  /* v48: the employer «درخواست‌های من» tab shows the applications
-     received on their ads — the request text shows its first 2 lines;
-     tapping the card expands it to the full message. */
+  /* v50: the employer «درخواست‌های من» tab is a chat-list — each
+     received card shows only the first line of the request message;
+     tapping it opens the chat, where the full message sits in a box. */
   .recv-job { font-size: 12px; color: #8a8a8e; margin: 2px 0 6px; }
   .recv-card .recv-msg {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* v50: the full request message inside a box at the top of the chat. */
+  .req-box {
+    border: 1px solid #e5e5e8; border-radius: 12px;
+    background: #f6f6f7; padding: 10px 12px; margin-top: 8px;
+    font-size: 14px; white-space: pre-wrap; word-break: break-word;
   }
   .answer-line { margin-top: 8px; font-size: 13.5px; font-weight: 600; }
   .answer-line.accepted { color: #137333; }
@@ -373,7 +377,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v49</span>
+<span class="app-version" id="app-version">v50</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -526,7 +530,7 @@ const MOCK_JOBS = [
   { id: 6, employer_id: 777, employer_name: "مریم", title: "ادیتور ویدیو برای کانال آشپزی", category: "ادیت ویدیو", budget: "$120", deadline: "2026-11-14", work_type: "دورکاری", description: "ویدیوی ۱۰ دقیقه‌ای آشپزی؛ ریتم آرام و تمیز.", status: "pending", created_at: "2026-11-03T10:00:00Z" }
 ];
 const MOCK_APPS = [
-  { id: 101, job_id: 3, freelancer_id: 777, freelancer_name: "مریم", freelancer_photo: "", freelancer_profile: { skills: "اسکریپت، مستند", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "دو سال اسکریپت مستند می‌نویسم." }, samples: "https://drive.google.com/drive/folders/example1\nhttps://youtu.be/example1", price: "$70", message: "سلام! دو سال اسکریپت مستند می‌نویسم؛ نمونه‌ها رو ببینید.", status: "pending", created_at: "2026-11-03T09:10:00Z" },
+  { id: 101, job_id: 3, freelancer_id: 777, freelancer_name: "مریم", freelancer_photo: "", freelancer_profile: { skills: "اسکریپت، مستند", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "دو سال اسکریپت مستند می‌نویسم." }, samples: "https://drive.google.com/drive/folders/example1\nhttps://youtu.be/example1", price: "$70", message: "سلام! دو سال اسکریپت مستند می‌نویسم؛ نمونه‌ها رو ببینید.\nقیمت پیشنهادی: ۷۰ دلار", status: "pending", created_at: "2026-11-03T09:10:00Z" },
   { id: 102, job_id: 3, freelancer_id: 888, freelancer_name: "امیر", freelancer_photo: "", freelancer_profile: { skills: "اسکریپت", country: "ایران", portfolio: "", bio: "" }, samples: "https://drive.google.com/drive/folders/example2", price: "$90", message: "اسکریپت‌نویس کانال‌های آموزشی؛ تحویل ۲ روزه.", status: "pending", created_at: "2026-11-03T07:40:00Z" },
   { id: 103, job_id: 1, freelancer_id: 111111, freelancer_name: "کالی", freelancer_photo: "", freelancer_profile: { skills: "ادیت چالش", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "۵ سال ادیت چالش." }, samples: "https://portfoliotub.github.io", price: "$140", message: "۵ سال ادیت چالش؛ نمونه‌هام توی پورتفولیو هست.", status: "pending", created_at: "2026-11-03T08:30:00Z" },
   { id: 104, job_id: 2, freelancer_id: 111111, freelancer_name: "کالی", freelancer_photo: "", freelancer_profile: { skills: "تامنیل", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "" }, samples: "https://portfoliotub.github.io", price: "$35", message: "تامنیل گیمینگ زیاد کار کردم.", status: "accepted", created_at: "2026-11-02T16:00:00Z" }
@@ -1151,19 +1155,19 @@ function renderMyApplications() {
     } else {
       html += state.receivedApps.map(function (a) {
         const name = a.freelancer_name || "فریلنسر";
+        // v50: a chat-list row — photo + name + the first line of the
+        // request message only. The ad title and the samples moved into
+        // the chat top (the full message sits in a box there).
         let h = '<div class="card clickable recv-card" data-recv-card="' + a.id + '">' +
           '<div class="card-head">' + photoAvatarHtml(name, a.freelancer_photo || "") + '<div class="card-title">' + esc(name) + "</div></div>" +
-          (a.job_title ? '<div class="recv-job">برای آگهی: ' + esc(a.job_title) + "</div>" : "") +
-          (a.message ? '<p class="desc recv-msg">' + esc(a.message) + "</p>" : "") +
-          (a.samples ? '<div class="meta">نمونه‌کارها:</div>' + sampleLinks(a.samples) : "");
+          (a.message ? '<p class="desc recv-msg">' + esc((a.message || "").split("\n")[0]) + "</p>" : "");
         return h + "</div>";
       }).join("");
     }
     viewEl().innerHTML = html;
     viewEl().querySelectorAll("[data-recv-card]").forEach(function (el) {
       el.addEventListener("click", function (ev) {
-        // Sample links keep their own action — tapping anywhere else on
-        // the card opens the chat with the freelancer.
+        // v50: tapping the row opens the chat with the freelancer.
         if (ev.target.closest("a,button")) return;
         openChat(parseInt(el.getAttribute("data-recv-card"), 10), { tab: "my-apps" });
       });
@@ -1443,13 +1447,19 @@ function renderChat() {
   // v43: per the user's screenshot — the chat top is ONLY the requester's
   // name + photo and the description of their request (their message).
   // The other-party header and the full request card (status, price, date,
-  // bio, portfolio, samples) are gone (v42), and the profile chips
-  // (skills, country) are gone too — the user asked «برچسب ها رو پاک کن».
+  // bio, portfolio) are gone (v42), and the profile chips (skills,
+  // country) are gone too — the user asked «برچسب ها رو پاک کن».
+  // v50: the message sits inside a box, and the ad title + samples moved
+  // here from the list card (the list shows only the first line now).
+  var job = (state.jobs || []).find(function (j) { return j.id === app.job_id; });
+  var jobTitle = app.job_title || (job && job.title);
   let html = '<button class="back" data-back>› بازگشت</button>' +
     '<div class="chat-wrap">' +
     '<div class="card chat-req"><div class="card-head">' + photoAvatarHtml(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
     '<div class="card-title">' + esc(app.freelancer_name || "فریلنسر") + "</div></div>" +
-    (app.message ? '<p class="desc">' + esc(app.message) + "</p>" : "") +
+    (jobTitle ? '<div class="recv-job">برای آگهی: ' + esc(jobTitle) + "</div>" : "") +
+    (app.message ? '<div class="req-box">' + esc(app.message) + "</div>" : "") +
+    (app.samples ? '<div class="meta">نمونه‌کارها:</div>' + sampleLinks(app.samples) : "") +
     "</div>";
   html += '<div class="chat-msgs" id="chat-msgs">' +
     (state.loading ? '<div class="loading">در حال بارگذاری…</div>' : chatMessagesHtml()) +
@@ -1765,7 +1775,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v49 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v50 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
