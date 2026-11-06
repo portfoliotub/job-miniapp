@@ -137,6 +137,18 @@
   .my-job-reqs { margin-top: 10px; }
   .req-count { font-size: 13.5px; font-weight: 700; }
   .my-job-reqs .row-btns { margin-top: 8px; }
+  /* v48: the employer «درخواست‌های من» tab shows the applications
+     received on their ads — the request text shows its first 2 lines;
+     tapping the card expands it to the full message. */
+  .recv-job { font-size: 12px; color: #8a8a8e; margin: 2px 0 6px; }
+  .recv-card .recv-msg {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .recv-card.expanded .recv-msg { display: block; -webkit-line-clamp: unset; line-clamp: unset; }
   .answer-line { margin-top: 8px; font-size: 13.5px; font-weight: 600; }
   .answer-line.accepted { color: #137333; }
   .answer-line.rejected { color: #a50e0e; }
@@ -362,7 +374,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v47</span>
+<span class="app-version" id="app-version">v48</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -531,6 +543,7 @@ const state = {
   tab: "my-jobs",
   view: { name: "my-jobs" }, // welcome | job-detail | post | my-apps | my-jobs | job-apps | chat | profile
   myApplications: [],
+  receivedApps: [], // v48: applications received on the employer's ads
   myJobs: [],
   jobApplications: {}, // jobId -> [applications]
   chatMessages: {}, // applicationId -> [messages]
@@ -805,6 +818,21 @@ async function loadMyJobsAndApps() {
     return loadJobApplications(j.id).catch(function () {});
   }));
 }
+/* v48: the employer «درخواست‌های من» tab shows the applications received
+   on the employer's own ads (not their own applications as a freelancer).
+   Reuses loadMyJobsAndApps, then flattens the per-job lists. */
+async function loadReceivedApplications() {
+  await loadMyJobsAndApps();
+  const all = [];
+  state.myJobs.forEach(function (j) {
+    (state.jobApplications[j.id] || []).forEach(function (a) {
+      a.job_title = j.title;
+      all.push(a);
+    });
+  });
+  all.sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+  state.receivedApps = all;
+}
 async function findJob(jobId) {
   if (state.jobById[jobId]) return state.jobById[jobId];
   if (MOCK) return MOCK_JOBS.find(function (j) { return j.id === jobId; }) || null;
@@ -949,7 +977,7 @@ async function submitApply(ev, jobId) {
     mockApply(payload);
     showToast("فرستاده شد ✓ (حالت پیش‌نمایش)");
     await loadMyApplications();
-    state.view = { name: "my-apps" }; state.tab = "my-apps"; render();
+    state.view = { name: "my-apps", own: true }; state.tab = "my-apps"; render();
     return;
   }
   // Primary channel: direct Supabase write (same reasoning as posting).
@@ -963,7 +991,7 @@ async function submitApply(ev, jobId) {
     sendViaTelegram({ type: "notify_application_posted", job_id: jobId, application_id: row && row.id });
     showToast("درخواست فرستاده شد ✓");
     await loadMyApplications();
-    state.view = { name: "my-apps" }; state.tab = "my-apps"; render();
+    state.view = { name: "my-apps", own: true }; state.tab = "my-apps"; render();
     return;
   } catch (e) {}
   if (sendViaTelegram(payload)) {
@@ -1109,6 +1137,50 @@ function renderMyApplications() {
   let html = "<h2>درخواست‌های من</h2>";
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
   if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
+  if (getRole() === "employer" && !state.view.own) {
+    // v48: per user's screenshot — the employer tab shows ONLY the people
+    // who applied to their projects: freelancer photo + name + request
+    // text (first 2 lines; tap the card to see the full message). No
+    // chat button, no status badge, no price/date line. Accept/reject
+    // stay — the employer's decision (also on the bot's buttons).
+    // (view.own: the apply flow just landed here to show the user's own
+    // new application, so the freelancer branch renders instead.)
+    if (!state.receivedApps.length) {
+      html += emptyState("هنوز درخواستی دریافت نکرده‌اید", "وقتی فریلنسری برای آگهی‌هات درخواست بده، اینجا می‌بینیش.");
+    } else {
+      html += state.receivedApps.map(function (a) {
+        const name = a.freelancer_name || "فریلنسر";
+        const prof = a.freelancer_profile || null;
+        let h = '<div class="card recv-card" data-recv-card="' + a.id + '">' +
+          '<div class="card-head">' + photoAvatarHtml(name, a.freelancer_photo || "") + '<div class="card-title">' + esc(name) + "</div></div>" +
+          (a.job_title ? '<div class="recv-job">برای آگهی: ' + esc(a.job_title) + "</div>" : "") +
+          (profileChips(prof) ? '<div class="meta-row">' + profileChips(prof) + "</div>" : "") +
+          (a.message ? '<p class="desc recv-msg">' + esc(a.message) + "</p>" : "") +
+          (a.samples ? '<div class="meta">نمونه‌کارها:</div>' + sampleLinks(a.samples) : "");
+        if (a.status === "pending") {
+          h += '<div class="row-btns"><button class="btn" data-accept="' + a.id + '">' + ICONS.check + " قبول</button>" +
+            '<button class="btn btn-danger" data-reject="' + a.id + '">' + ICONS.x + " رد</button></div>";
+        }
+        return h + "</div>";
+      }).join("");
+    }
+    viewEl().innerHTML = html;
+    viewEl().querySelectorAll("[data-recv-card]").forEach(function (el) {
+      el.addEventListener("click", function (ev) {
+        // Accept/reject and sample links keep their own action — tapping
+        // anywhere else on the card expands/collapses the full message.
+        if (ev.target.closest("a,button")) return;
+        el.classList.toggle("expanded");
+      });
+    });
+    viewEl().querySelectorAll("[data-accept]").forEach(function (el) {
+      el.addEventListener("click", function () { setAppStatus(parseInt(el.getAttribute("data-accept"), 10), "accepted"); });
+    });
+    viewEl().querySelectorAll("[data-reject]").forEach(function (el) {
+      el.addEventListener("click", function () { setAppStatus(parseInt(el.getAttribute("data-reject"), 10), "rejected"); });
+    });
+    return;
+  }
   if (!state.myApplications.length) {
     html += emptyState("هنوز درخواستی نفرستاده‌اید", "لینک آگهی را از کانال یا ربات باز کنید.");
   } else {
@@ -1662,7 +1734,12 @@ async function switchTab(tab) {
   } else if (tab === "my-apps") {
     state.view = { name: "my-apps" };
     state.loading = true; render();
-    try { await loadMyApplications(); state.loading = false; } catch (e) { state.loading = false; state.error = "خطا در بارگذاری: " + e.message; }
+    try {
+      // v48: employers see the applications received on their ads;
+      // freelancers see their own applications.
+      if (getRole() === "employer") { await loadReceivedApplications(); } else { await loadMyApplications(); }
+      state.loading = false;
+    } catch (e) { state.loading = false; state.error = "خطا در بارگذاری: " + e.message; }
     render();
   } else if (tab === "my-jobs") {
     state.view = { name: "my-jobs" };
@@ -1699,7 +1776,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v47 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v48 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
