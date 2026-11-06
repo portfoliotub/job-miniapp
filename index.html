@@ -371,7 +371,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v52</span>
+<span class="app-version" id="app-version">v53</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1371,7 +1371,11 @@ function fmtTime(iso) {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return "";
-    return d.toLocaleDateString("fa-IR") + " " + d.toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" });
+    // v53: Gregorian (میلادی) dates under chat messages, Latin digits,
+    // local time — «2026/11/03 12:50». fmtDate (job/application dates)
+    // stays Jalali; the user asked only about the chat timestamps.
+    const p = function (n) { return String(n).padStart(2, "0"); };
+    return d.getFullYear() + "/" + p(d.getMonth() + 1) + "/" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
   } catch (e) { return ""; }
 }
 function chatMessagesHtml() {
@@ -1769,7 +1773,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v52 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v53 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
