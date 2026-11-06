@@ -362,7 +362,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v45</span>
+<span class="app-version" id="app-version">v46</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -470,7 +470,7 @@ function setRole(r) {
 }
 function homeTab() {
   if (getRole() === "freelancer") return "my-apps";
-  return isAdmin() ? "jobs" : "post";
+  return isAdmin() ? "my-jobs" : "post";
 }
 function getLaunchSource() {
   // Order: deep-link start_param (Telegram) > ?src= (bot's /start link) >
@@ -528,10 +528,8 @@ const MOCK_MESSAGES = [
 
 /* ================= state ================= */
 const state = {
-  tab: "jobs",
-  view: { name: "jobs" }, // welcome | jobs | job-detail | post | my-apps | my-jobs | job-apps | chat | profile
-  jobFilter: { q: "", cat: "همه", sort: "new" },
-  jobs: [],
+  tab: "my-jobs",
+  view: { name: "my-jobs" }, // welcome | job-detail | post | my-apps | my-jobs | job-apps | chat | profile
   pendingJobs: [], // admin-only moderation queue (status pending)
   myApplications: [],
   myJobs: [],
@@ -700,18 +698,6 @@ function sampleLinks(samples) {
     return '<a class="sample-link" href="' + esc(u) + '" target="_blank" rel="noopener">' + ICONS.link + " " + esc(u) + "</a>";
   }).join("");
 }
-function jobCard(job) {
-  return '<div class="job-row" data-job-id="' + job.id + '">' +
-    avatarHtml(job.employer_name || "کارفرما") +
-    '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
-    '<div class="job-row-sub">' + esc(job.employer_name || "کارفرما") + " · " + esc(job.category) +
-    (job.deadline ? " · " + esc(job.deadline) : "") +
-    (job.work_type ? " · " + esc(job.work_type) : "") + "</div></div>" +
-    '<div class="job-row-side">' +
-    (job.budget ? '<div class="job-row-budget">' + esc(job.budget) + "</div>" : "") +
-    '<div class="job-row-date">' + fmtDate(job.created_at) + "</div></div>" +
-    "</div>";
-}
 let toastTimer = null;
 function showToast(msg) {
   const el = document.getElementById("toast");
@@ -775,26 +761,21 @@ function sendViaTelegram(payload) {
   }
   return false;
 }
-async function loadJobs() {
+/* v46: the jobs tab is gone — the only job list the app still loads is
+   the admin moderation queue (pending ads), shown at the top of my-jobs. */
+async function loadPendingJobs() {
+  if (!isAdmin()) { state.pendingJobs = []; return; }
   if (MOCK) {
-    state.jobs = MOCK_JOBS.filter(function (j) { return j.status === "open"; })
-      .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
     state.pendingJobs = MOCK_JOBS.filter(function (j) { return j.status === "pending"; })
       .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
     state.jobById = {};
     MOCK_JOBS.forEach(function (j) { state.jobById[j.id] = j; });
     return;
   }
-  state.jobs = await sbSelect("jobs", { select: "*", status: "eq.open", order: "created_at.desc" }) || [];
-  state.jobById = {};
-  state.jobs.forEach(function (j) { state.jobById[j.id] = j; });
-  state.pendingJobs = [];
-  if (isAdmin()) {
-    try {
-      state.pendingJobs = await sbSelect("jobs", { select: "*", status: "eq.pending", order: "created_at.desc" }) || [];
-      state.pendingJobs.forEach(function (j) { state.jobById[j.id] = j; });
-    } catch (e) { state.pendingJobs = []; }
-  }
+  try {
+    state.pendingJobs = await sbSelect("jobs", { select: "*", status: "eq.pending", order: "created_at.desc" }) || [];
+    state.pendingJobs.forEach(function (j) { state.jobById[j.id] = j; });
+  } catch (e) { state.pendingJobs = []; }
 }
 async function loadMyApplications() {
   const myId = me().id;
@@ -844,6 +825,7 @@ async function loadMyJobsAndApps() {
   await Promise.all(state.myJobs.map(function (j) {
     return loadJobApplications(j.id).catch(function () {});
   }));
+  await loadPendingJobs();
 }
 async function findJob(jobId) {
   if (state.jobById[jobId]) return state.jobById[jobId];
@@ -922,105 +904,12 @@ function budgetNum(job) {
   const m = String(job.budget || "").match(/[\d,]+/);
   return m ? parseFloat(m[0].replace(/,/g, "")) : 0;
 }
-function filteredJobs() {
-  const f = state.jobFilter;
-  let list = state.jobs.slice();
-  if (f.cat && f.cat !== "همه") list = list.filter(function (j) { return j.category === f.cat; });
-  if (f.q) {
-    const q = f.q.trim();
-    list = list.filter(function (j) {
-      return (j.title + " " + (j.description || "") + " " + (j.employer_name || "") + " " + (j.category || "")).indexOf(q) !== -1;
-    });
-  }
-  if (f.sort === "budget") list.sort(function (a, b) { return budgetNum(b) - budgetNum(a); });
-  else list.sort(function (a, b) { return String(b.created_at || "").localeCompare(String(a.created_at || "")); });
-  return list;
-}
-function renderJobList() {
-  const list = filteredJobs();
-  const el = document.getElementById("job-list");
-  if (!el) return;
-  const count = document.getElementById("job-count");
-  if (count) count.textContent = list.length + " آگهی باز";
-  if (!list.length) {
-    // Duck only when the section is truly empty (no open, no pending jobs).
-    // A registered request — even a pending one in the admin queue, or jobs
-    // that exist but are filtered out — means text only, no duck.
-    const sectionEmpty = state.jobs.length === 0 && state.pendingJobs.length === 0;
-    const filtering = state.jobFilter.q || state.jobFilter.cat !== "همه";
-    el.innerHTML = filtering
-      ? emptyState("آگهی‌ای با این فیلتر نیست", "جستجو یا دسته را عوض کن.", false)
-      : sectionEmpty
-        ? emptyState("هنوز آگهی بازی نیست", getRole() === "freelancer" ? "به‌زودی آگهی‌های جدید اینجا می‌آید." : "اولین آگهی را از تب «ثبت آگهی» بسازید.")
-        : emptyState("هنوز آگهی بازی نیست", "آگهی‌های در انتظار تایید بالا هستند.", false);
-  } else {
-    el.innerHTML = list.map(jobCard).join("");
-  }
-  el.querySelectorAll("[data-job-id]").forEach(function (row) {
-    row.addEventListener("click", function () { openJobDetail(parseInt(row.getAttribute("data-job-id"), 10)); });
-  });
-  mountDucks();
-}
-
-function renderJobs() {
-  let html = "<h2>کارهای باز</h2>";
-  if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
-  if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
-  if (isAdmin() && state.pendingJobs.length) {
-    html += '<div class="pending-head">در انتظار تایید (' + state.pendingJobs.length + ")</div>" +
-      state.pendingJobs.map(function (job) {
-        return '<div class="pending-row">' +
-          avatarHtml(job.title) +
-          '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
-          '<div class="job-row-sub">' + esc(job.employer_name || "کارفرما") + " · " + esc(job.category) + "</div></div>" +
-          '<button type="button" class="btn btn-small" data-approve-job="' + job.id + '">تایید ✓</button>' +
-          "</div>";
-      }).join("");
-  }
-  // v22: once a request is registered in this section (a pending ad in the
-  // admin queue) but no ad is open yet, the whole browse block goes away —
-  // search, chips, sort, count and empty text. The queue above is the
-  // section's content. The block comes back when an ad opens, or when the
-  // section is truly empty (duck). Freelancers never see pending jobs, so
-  // their browse block is unaffected.
-  const showBrowse = state.jobs.length > 0 || state.pendingJobs.length === 0;
-  if (showBrowse) {
-    // Freelancer-style browse: search + category chips + sort (Upwork-like).
-    html += '<input id="job-search" class="search-input" type="search" placeholder="جستجوی آگهی…" value="' + esc(state.jobFilter.q) + '">' +
-      '<div class="chip-row">' + ["همه"].concat(CATEGORIES).map(function (c) {
-        return '<button type="button" class="fchip' + (state.jobFilter.cat === c ? " active" : "") + '" data-cat="' + esc(c) + '">' + esc(c) + "</button>";
-      }).join("") + "</div>" +
-      '<div class="sort-row">' +
-      '<button type="button" class="fchip' + (state.jobFilter.sort === "new" ? " active" : "") + '" data-sort="new">جدیدترین</button>' +
-      '<button type="button" class="fchip' + (state.jobFilter.sort === "budget" ? " active" : "") + '" data-sort="budget">بیشترین بودجه</button>' +
-      '</div>' +
-      '<div class="job-count" id="job-count"></div>' +
-      '<div id="job-list"></div>';
-  }
-  viewEl().innerHTML = html;
-  if (showBrowse) {
-    // Search re-renders only the list, so the keyboard and focus stay alive.
-    const search = document.getElementById("job-search");
-    search.addEventListener("input", function () { state.jobFilter.q = search.value; renderJobList(); });
-    viewEl().querySelectorAll("[data-cat]").forEach(function (el) {
-      el.addEventListener("click", function () { state.jobFilter.cat = el.getAttribute("data-cat"); renderJobs(); });
-    });
-    viewEl().querySelectorAll("[data-sort]").forEach(function (el) {
-      el.addEventListener("click", function () { state.jobFilter.sort = el.getAttribute("data-sort"); renderJobs(); });
-    });
-    renderJobList();
-  }
-  viewEl().querySelectorAll("[data-approve-job]").forEach(function (el) {
-    el.addEventListener("click", function () { setJobStatus(parseInt(el.getAttribute("data-approve-job"), 10), "open"); });
-  });
-}
-
 async function openJobDetail(jobId) {
   const job = await findJob(jobId);
   state.view = { name: "job-detail", jobId: jobId };
   if (!job) {
     viewEl().innerHTML = '<button class="back" data-back>› بازگشت</button>' + emptyState("این آگهی پیدا نشد", "ممکن است حذف شده باشد.");
-    bindBack("jobs");
+    bindBack(homeTab());
     renderTabs();
     return;
   }
@@ -1055,7 +944,7 @@ async function openJobDetail(jobId) {
       "</form>";
   }
   viewEl().innerHTML = html;
-  bindBack("jobs");
+  bindBack(homeTab());
   const seeApps = document.getElementById("see-apps");
   if (seeApps) seeApps.addEventListener("click", function () { openJobApplications(jobId); });
   const form = document.getElementById("apply-form");
@@ -1243,7 +1132,7 @@ function renderMyApplications() {
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
   if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
   if (!state.myApplications.length) {
-    html += emptyState("هنوز درخواستی نفرستاده‌اید", "از تب «کارها» یک آگهی را باز کنید.");
+    html += emptyState("هنوز درخواستی نفرستاده‌اید", "لینک آگهی را از کانال یا ربات باز کنید.");
   } else {
     html += state.myApplications.map(function (a) {
       const job = state.jobById[a.job_id];
@@ -1277,8 +1166,22 @@ function renderMyJobs() {
   let html = "<h2>آگهی‌های من</h2>";
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
   if (state.error) html += '<div class="error">' + esc(state.error) + "</div>";
+  // v46: the jobs tab is gone — the admin moderation queue lives here now,
+  // above the admin's own ads (admin only; other employers never see it).
+  if (isAdmin() && state.pendingJobs.length) {
+    html += '<div class="pending-head">در انتظار تایید (' + state.pendingJobs.length + ")</div>" +
+      state.pendingJobs.map(function (job) {
+        return '<div class="pending-row">' +
+          avatarHtml(job.title) +
+          '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
+          '<div class="job-row-sub">' + esc(job.employer_name || "کارفرما") + " · " + esc(job.category) + "</div></div>" +
+          '<button type="button" class="btn btn-small" data-approve-job="' + job.id + '">تایید ✓</button>' +
+          "</div>";
+      }).join("");
+  }
   if (!state.myJobs.length) {
-    html += emptyState("هنوز آگهی ثبت نکرده‌اید", "از تب «ثبت آگهی» شروع کنید.");
+    // A pending queue above means the page is not truly empty — text only, no duck (v22 rule).
+    html += emptyState("هنوز آگهی ثبت نکرده‌اید", "از تب «ثبت آگهی» شروع کنید.", !(isAdmin() && state.pendingJobs.length));
   } else {
     html += state.myJobs.map(function (job) {
       // v40: per user's screenshot — the avatar circle and the
@@ -1324,6 +1227,10 @@ function renderMyJobs() {
   // — the card itself is still not clickable (v36).
   viewEl().querySelectorAll("[data-see-apps]").forEach(function (el) {
     el.addEventListener("click", function () { openJobApplications(parseInt(el.getAttribute("data-see-apps"), 10)); });
+  });
+  // v46: approve buttons of the admin moderation queue (moved from the jobs tab).
+  viewEl().querySelectorAll("[data-approve-job]").forEach(function (el) {
+    el.addEventListener("click", function () { setJobStatus(parseInt(el.getAttribute("data-approve-job"), 10), "open"); });
   });
 }
 
@@ -1424,7 +1331,7 @@ function setAppStatus(appId, status) {
 function setJobStatus(jobId, status) {
   const payload = { type: "set_job_status", job_id: jobId, status: status };
   sendToBot(payload, function () { mockSetJobStatus(payload); });
-  if (MOCK) { loadJobs().then(function () { render(); }); }
+  if (MOCK) { loadPendingJobs().then(function () { render(); }); }
 }
 function mockSetJobStatus(p) {
   [MOCK_JOBS, state.myJobs].forEach(function (list) {
@@ -1736,21 +1643,20 @@ function bindBack(tab) {
 }
 
 /* ================= tabs =================
-   Admin sees all 4 tabs (jobs first, for the moderation queue).
-   Regular users see only 3 tabs with Post Ad in the middle. */
+   v46: the jobs tab is gone — no job browsing anywhere. Employers (admin
+   included) see 3 tabs with Post Ad in the middle; the admin moderation
+   queue moved into my-jobs. */
 const TAB_DEFS = {
-  "jobs": { label: "کارها", tile: "tile-blue", icon: "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"7\" width=\"20\" height=\"14\" rx=\"2\" ry=\"2\"/><path d=\"M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16\"/></svg>" },
   "post": { label: "ثبت آگهی", tile: "tile-green", icon: "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>" },
   "my-apps": { label: "درخواست‌های من", tile: "tile-purple", icon: "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z\"/></svg>" },
   "my-jobs": { label: "آگهی‌های من", tile: "tile-orange", icon: "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z\"/></svg>" },
   "profile": { label: "پروفایل", tile: "tile-teal", icon: "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\"/><circle cx=\"12\" cy=\"7\" r=\"4\"/></svg>" }
 };
 /* Tabs depend on the chosen role. Freelancers (v23) see only their
-   applications + profile — no job browsing; employers keep the v17 layout
-   (post in the middle); admin keeps 4 tabs. */
+   applications + profile — no job browsing; employers (admin included)
+   see my-applications + post + my-jobs, post in the middle. */
 function tabsForRole() {
   if (getRole() === "freelancer") return ["my-apps", "profile"];
-  if (isAdmin()) return ["jobs", "post", "my-apps", "my-jobs"];
   return ["my-apps", "post", "my-jobs"]; // post in the middle
 }
 function buildTabs() {
@@ -1767,7 +1673,7 @@ function buildTabs() {
 
 /* ================= tabs & render ================= */
 function renderTabs() {
-  const active = state.view.name === "job-detail" ? "jobs"
+  const active = state.view.name === "job-detail" ? ""
     : state.view.name === "job-apps" ? "my-jobs"
     : state.view.name === "chat" ? (state.view.back && state.view.back.tab === "job-apps" ? "my-jobs" : "my-apps")
     : state.view.name;
@@ -1783,7 +1689,6 @@ function render() {
   renderTabs();
   switch (state.view.name) {
     case "welcome": renderWelcome(); break;
-    case "jobs": renderJobs(); break;
     case "job-detail": openJobDetail(state.view.jobId); break;
     case "post": renderPost(); break;
     case "my-apps": renderMyApplications(); break;
@@ -1791,27 +1696,26 @@ function render() {
     case "job-apps": renderJobApplications(); break;
     case "chat": renderChat(); break;
     case "profile": renderProfile(); break;
-    default: renderJobs();
+    default:
+      // Safety net for an unknown view — render the home tab's view.
+      if (homeTab() === "my-jobs") renderMyJobs();
+      else if (homeTab() === "post") renderPost();
+      else renderMyApplications();
   }
   mountDucks();
 }
 async function switchTab(tab) {
-  // Role guards (v23): the jobs tab is admin-only — non-admin employers
-  // (v17) and freelancers (v23) are sent home instead. Freelancers also
-  // cannot open post/my-jobs; their home is my-applications. Admin can
-  // open everything regardless of role.
+  // v46: the jobs tab is gone — an unknown tab (e.g. an old "jobs" call)
+  // goes home instead of breaking. Role guards (v23): freelancers cannot
+  // open post/my-jobs; their home is my-applications. Admin can open
+  // everything regardless of role.
+  if (["post", "my-apps", "my-jobs", "profile"].indexOf(tab) === -1) tab = homeTab();
   const role = getRole();
-  if (tab === "jobs" && !isAdmin()) tab = homeTab();
   if ((tab === "post" || tab === "my-jobs") && role === "freelancer" && !isAdmin()) tab = "my-apps";
   if (tab === "profile" && role !== "freelancer") tab = homeTab();
   state.tab = tab;
   state.error = "";
-  if (tab === "jobs") {
-    state.view = { name: "jobs" };
-    state.loading = true; render();
-    try { await loadJobs(); state.loading = false; } catch (e) { state.loading = false; state.error = "خطا در بارگذاری: " + e.message; }
-    render();
-  } else if (tab === "post") {
+  if (tab === "post") {
     state.view = { name: "post" };
     render();
   } else if (tab === "my-apps") {
@@ -1854,7 +1758,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v45 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v46 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -1875,7 +1779,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openChat: openChat };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat };
 </script>
 </body>
 </html>
