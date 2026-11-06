@@ -131,6 +131,16 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  /* v45: the employer sees the requests received on each of their ads
+     (count + view button); the freelancer sees the employer's answer
+     on each of their own requests, as a plain line. */
+  .my-job-reqs { margin-top: 10px; }
+  .req-count { font-size: 13.5px; font-weight: 700; }
+  .my-job-reqs .row-btns { margin-top: 8px; }
+  .answer-line { margin-top: 8px; font-size: 13.5px; font-weight: 600; }
+  .answer-line.accepted { color: #137333; }
+  .answer-line.rejected { color: #a50e0e; }
+  .answer-line.pending { color: #7a5b00; }
   .empty-duck { width: 150px; height: 150px; margin: 0 auto 6px; }
   .empty-duck svg { width: 100%; height: 100%; display: block; }
   .empty-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
@@ -352,7 +362,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v44</span>
+<span class="app-version" id="app-version">v45</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -549,6 +559,10 @@ function fmtDate(iso) {
   } catch (e) {
     return String(iso);
   }
+}
+/* v45: Persian digits for counts (۲ instead of 2). */
+function faNum(n) {
+  try { return Number(n).toLocaleString("fa-IR"); } catch (e) { return String(n); }
 }
 /* Telegram-style avatar: colored circle with the first letter. */
 const AVATAR_COLORS = ["#ff845e", "#ffab47", "#a47ee0", "#5bc76c", "#4da8e8", "#5b8def", "#e081a0", "#f0826b"];
@@ -821,6 +835,15 @@ async function loadJobApplications(jobId) {
     return;
   }
   state.jobApplications[jobId] = await sbSelect("applications", { select: "*", job_id: "eq." + jobId, order: "created_at.desc" }) || [];
+}
+/* v45: my-jobs cards show the requests received, so the applications
+   are loaded together with the jobs. A failed applications read must
+   not block the jobs list — the card then shows only the view button. */
+async function loadMyJobsAndApps() {
+  await loadMyJobs();
+  await Promise.all(state.myJobs.map(function (j) {
+    return loadJobApplications(j.id).catch(function () {});
+  }));
 }
 async function findJob(jobId) {
   if (state.jobById[jobId]) return state.jobById[jobId];
@@ -1184,7 +1207,7 @@ async function submitPostJob(ev) {
   if (MOCK) {
     mockCreateJob(payload);
     showToast("فرستاده شد ✓ (حالت پیش‌نمایش)");
-    await loadMyJobs();
+    await loadMyJobsAndApps();
     state.view = { name: "my-jobs" }; state.tab = "my-jobs"; render();
     return;
   }
@@ -1202,7 +1225,7 @@ async function submitPostJob(ev) {
     // If Telegram's send is broken, the bot's periodic check picks it up.
     sendViaTelegram({ type: "notify_job_posted", job_id: row && row.id, title: payload.title });
     showToast("آگهی ثبت شد ✓");
-    await loadMyJobs();
+    await loadMyJobsAndApps();
     state.view = { name: "my-jobs" }; state.tab = "my-jobs"; render();
     return;
   } catch (e) {}
@@ -1225,12 +1248,19 @@ function renderMyApplications() {
     html += state.myApplications.map(function (a) {
       const job = state.jobById[a.job_id];
       const title = a.job_title || (job ? job.title : "آگهی #" + a.job_id);
+      // v45: the employer's answer is a plain line, not just the badge —
+      // the freelancer sees at a glance whether the employer answered.
+      const answerCls = a.status === "accepted" ? "accepted" : a.status === "rejected" ? "rejected" : "pending";
+      const answerText = a.status === "accepted" ? "پاسخ کارفرما: درخواست شما قبول شد"
+        : a.status === "rejected" ? "پاسخ کارفرما: درخواست شما رد شد"
+        : "پاسخ کارفرما: هنوز جواب نداده است";
       // v41: tapping the request opens its chat (full request + thread).
       return '<div class="card clickable" data-app-card="' + a.id + '">' +
         '<div class="card-head">' + avatarHtml(title) + '<div class="card-title">' + esc(title) + "</div></div>" +
         '<div class="meta-row">' + statusBadge(a.status) +
         (a.price ? '<span class="meta">پیشنهاد شما: ' + esc(a.price) + "</span>" : "") +
         '<span class="meta">' + fmtDate(a.created_at) + "</span></div>" +
+        '<div class="answer-line ' + answerCls + '">' + answerText + "</div>" +
         (a.message ? '<p class="desc">' + esc(a.message) + "</p>" : "") +
         '<div class="row-btns"><button class="btn btn-ghost" type="button" data-chat="' + a.id + '">' + ICONS.chat + " چت با کارفرما</button></div>" +
         "</div>";
@@ -1254,6 +1284,20 @@ function renderMyJobs() {
       // v40: per user's screenshot — the avatar circle and the
       // request-count/date side block are REMOVED from my-jobs cards.
       // Details (chips + description) stay inline under the row.
+      // v45: the requests received ARE shown — a count line + a button
+      // that opens the applications list (the employer sees the
+      // freelancers' requests). A card with no requests shows nothing
+      // here, so the v40 check (no "درخواست" on a fresh ad) still holds.
+      const apps = state.jobApplications[job.id];
+      let reqs = "";
+      if (apps && apps.length) {
+        const pending = apps.filter(function (a) { return a.status === "pending"; }).length;
+        reqs = '<div class="my-job-reqs"><div class="req-count">' + faNum(apps.length) + " درخواست از فریلنسرها" +
+          (pending ? " (" + faNum(pending) + " در انتظار)" : "") + "</div>" +
+          '<div class="row-btns"><button class="btn" type="button" data-see-apps="' + job.id + '">مشاهده درخواست‌ها</button></div></div>';
+      } else if (!apps) {
+        reqs = '<div class="my-job-reqs"><div class="row-btns"><button class="btn" type="button" data-see-apps="' + job.id + '">مشاهده درخواست‌ها</button></div></div>';
+      }
       return '<div class="my-job-card">' +
         '<div class="job-row">' +
         '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
@@ -1269,14 +1313,18 @@ function renderMyJobs() {
           "</div>" +
           (job.description ? '<p class="desc">' + esc(job.description) + "</p>" : "") +
           "</div>" : "") +
+        reqs +
         "</div>";
     }).join("");
   }
   html += '<button class="btn btn-ghost role-switch" id="switch-role">تغییر نقش</button>';
   viewEl().innerHTML = html;
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
-  // v36: no click handler on my-jobs cards — tapping an own ad does
-  // nothing; all its details are already shown inline in the card.
+  // v45: the see-apps button is the only click target on a my-jobs card
+  // — the card itself is still not clickable (v36).
+  viewEl().querySelectorAll("[data-see-apps]").forEach(function (el) {
+    el.addEventListener("click", function () { openJobApplications(parseInt(el.getAttribute("data-see-apps"), 10)); });
+  });
 }
 
 async function openJobApplications(jobId) {
@@ -1775,8 +1823,7 @@ async function switchTab(tab) {
     state.view = { name: "my-jobs" };
     state.loading = true; render();
     try {
-      await loadMyJobs();
-      await Promise.all(state.myJobs.map(function (j) { return loadJobApplications(j.id); }));
+      await loadMyJobsAndApps();
       state.loading = false;
     } catch (e) { state.loading = false; state.error = "خطا در بارگذاری: " + e.message; }
     render();
@@ -1807,7 +1854,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v44 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v45 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
