@@ -146,12 +146,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* v50: the full request message inside a box at the top of the chat. */
-  .req-box {
-    border: 1px solid #e5e5e8; border-radius: 12px;
-    background: #f6f6f7; padding: 10px 12px; margin-top: 8px;
-    font-size: 14px; white-space: pre-wrap; word-break: break-word;
-  }
   .answer-line { margin-top: 8px; font-size: 13.5px; font-weight: 600; }
   .answer-line.accepted { color: #137333; }
   .answer-line.rejected { color: #a50e0e; }
@@ -377,7 +371,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v50</span>
+<span class="app-version" id="app-version">v51</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1444,13 +1438,11 @@ async function openChat(appId, back) {
 }
 function renderChat() {
   const app = state.view.app;
-  // v43: per the user's screenshot — the chat top is ONLY the requester's
-  // name + photo and the description of their request (their message).
-  // The other-party header and the full request card (status, price, date,
-  // bio, portfolio) are gone (v42), and the profile chips (skills,
-  // country) are gone too — the user asked «برچسب ها رو پاک کن».
-  // v50: the message sits inside a box, and the ad title + samples moved
-  // here from the list card (the list shows only the first line now).
+  // v51: the whole request is ONE single message at the top of the
+  // chat — name + photo, ad title, the full message, samples — no
+  // inner box, no separate sections (the user asked «در یه پیام واحد
+  // باشه»). The ad title + samples moved here from the list card in
+  // v50 (the list shows only the first line now).
   var job = (state.jobs || []).find(function (j) { return j.id === app.job_id; });
   var jobTitle = app.job_title || (job && job.title);
   let html = '<button class="back" data-back>› بازگشت</button>' +
@@ -1458,7 +1450,7 @@ function renderChat() {
     '<div class="card chat-req"><div class="card-head">' + photoAvatarHtml(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
     '<div class="card-title">' + esc(app.freelancer_name || "فریلنسر") + "</div></div>" +
     (jobTitle ? '<div class="recv-job">برای آگهی: ' + esc(jobTitle) + "</div>" : "") +
-    (app.message ? '<div class="req-box">' + esc(app.message) + "</div>" : "") +
+    (app.message ? '<p class="desc">' + esc(app.message) + "</p>" : "") +
     (app.samples ? '<div class="meta">نمونه‌کارها:</div>' + sampleLinks(app.samples) : "") +
     "</div>";
   html += '<div class="chat-msgs" id="chat-msgs">' +
@@ -1775,7 +1767,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v50 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v51 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
