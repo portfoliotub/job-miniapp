@@ -371,7 +371,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v54</span>
+<span class="app-version" id="app-version">v55</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1178,36 +1178,21 @@ function renderMyApplications() {
     html += emptyState("هنوز درخواستی نفرستاده‌اید", "لینک آگهی را از کانال یا ربات باز کنید.");
   } else {
     html += state.myApplications.map(function (a) {
+      // v55: per the user's screenshot — ALL requests render as chat-list
+      // rows, exactly like the employer's received rows (and the v54
+      // answered rows): the employer's avatar + name + the first line of
+      // the employer's answer only. Answered: «درخواست شما قبول شد» /
+      // «رد شد»; not answered yet: «هنوز جواب نداده است». No badge, no
+      // price/date, no job title, and the big «چت با کارفرما» button is
+      // gone entirely — tapping the row opens the chat.
       const job = state.jobById[a.job_id];
-      const title = a.job_title || (job ? job.title : "آگهی #" + a.job_id);
-      // v54: per the user's screenshot — a request the employer has
-      // answered renders as a chat-list row, exactly like the employer's
-      // received rows: the employer's avatar + name + the first line of
-      // the answer only. No badge, no price/date, no job title — the
-      // chat top has those. Tapping the row opens the chat.
-      if (a.status === "accepted" || a.status === "rejected") {
-        const empName = a.job_employer || (job && job.employer_name) || "کارفرما";
-        const answer = a.status === "accepted" ? "درخواست شما قبول شد" : "درخواست شما رد شد";
-        return '<div class="card clickable recv-card" data-app-card="' + a.id + '">' +
-          '<div class="card-head">' + avatarHtml(empName) + '<div class="card-title">' + esc(empName) + "</div></div>" +
-          '<p class="desc recv-msg">' + esc(answer) + "</p></div>";
-      }
-      // v45: the employer's answer is a plain line, not just the badge —
-      // the freelancer sees at a glance whether the employer answered.
-      const answerCls = a.status === "accepted" ? "accepted" : a.status === "rejected" ? "rejected" : "pending";
-      const answerText = a.status === "accepted" ? "پاسخ کارفرما: درخواست شما قبول شد"
-        : a.status === "rejected" ? "پاسخ کارفرما: درخواست شما رد شد"
-        : "پاسخ کارفرما: هنوز جواب نداده است";
-      // v41: tapping the request opens its chat (full request + thread).
-      return '<div class="card clickable" data-app-card="' + a.id + '">' +
-        '<div class="card-head">' + avatarHtml(title) + '<div class="card-title">' + esc(title) + "</div></div>" +
-        '<div class="meta-row">' + statusBadge(a.status) +
-        (a.price ? '<span class="meta">پیشنهاد شما: ' + esc(a.price) + "</span>" : "") +
-        '<span class="meta">' + fmtDate(a.created_at) + "</span></div>" +
-        '<div class="answer-line ' + answerCls + '">' + answerText + "</div>" +
-        (a.message ? '<p class="desc">' + esc(a.message) + "</p>" : "") +
-        '<div class="row-btns"><button class="btn btn-ghost" type="button" data-chat="' + a.id + '">' + ICONS.chat + " چت با کارفرما</button></div>" +
-        "</div>";
+      const empName = a.job_employer || (job && job.employer_name) || "کارفرما";
+      const answer = a.status === "accepted" ? "درخواست شما قبول شد"
+        : a.status === "rejected" ? "درخواست شما رد شد"
+        : "هنوز جواب نداده است";
+      return '<div class="card clickable recv-card" data-app-card="' + a.id + '">' +
+        '<div class="card-head">' + avatarHtml(empName) + '<div class="card-title">' + esc(empName) + "</div></div>" +
+        '<p class="desc recv-msg">' + esc(answer) + "</p></div>";
     }).join("");
   }
   // v24: no role switch here — it lives only in the freelancer profile.
@@ -1791,7 +1776,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v54 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v55 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
