@@ -263,6 +263,15 @@
     color: var(--button-text); background: var(--button);
     border: none; border-radius: 10px; cursor: pointer;
   }
+  /* v56: one-message rule — while the freelancer waits for the
+     employer's first answer, the composer is locked and a note
+     explains why. */
+  .chat-lock-note {
+    font-size: 13px; color: var(--hint); text-align: center;
+    padding: 2px 4px 8px;
+  }
+  .chat-composer.locked { opacity: .5; }
+  .chat-composer.locked .chat-send { cursor: default; }
   .empty { text-align: center; color: var(--hint); padding: 34px 10px; }
   .loading { text-align: center; color: var(--hint); padding: 30px 10px; }
   .error { color: var(--destructive); font-size: 13.5px; padding: 10px 0; }
@@ -371,7 +380,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v55</span>
+<span class="app-version" id="app-version">v56</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1411,8 +1420,60 @@ function startChatPolling(appId) {
   stopChatPolling();
   state.chatTimer = setInterval(function () {
     if (state.view.name !== "chat" || state.view.applicationId !== appId) { stopChatPolling(); return; }
-    loadChatMessages(appId).then(refreshChatMessages).catch(function () {});
+    loadChatMessages(appId).then(function () { refreshChatMessages(); applyChatLock(); }).catch(function () {});
+    refreshChatApp(appId);
   }, 5000);
+}
+/* v56: one-message rule — a freelancer may send only the application
+   (their first message) until the employer answers it, either with a
+   chat reply or by accepting/rejecting the request. Until then the
+   freelancer's composer is locked; the employer side is never locked,
+   and neither is a chat with yourself (own ad). Once the employer
+   answers, the limit is lifted for good on that application. */
+function chatLocked() {
+  const app = state.view.app;
+  const job = state.view.job;
+  if (!app || state.view.name !== "chat") return false;
+  if (me().id !== app.freelancer_id) return false; // employer side: never locked
+  if (job && job.employer_id === app.freelancer_id) return false; // own ad: no other side
+  if (app.status && app.status !== "pending") return false; // employer answered the request
+  const employerId = job ? job.employer_id : null;
+  const list = state.chatMessages[state.view.applicationId] || [];
+  if (employerId && list.some(function (m) { return m.sender_id === employerId; })) return false; // employer replied in chat
+  return true;
+}
+function applyChatLock() {
+  const locked = chatLocked();
+  const input = document.getElementById("chat-input");
+  const send = document.getElementById("chat-send");
+  const photo = document.getElementById("chat-photo-file");
+  const note = document.getElementById("chat-lock-note");
+  const composer = document.querySelector(".chat-composer");
+  if (input) input.disabled = locked;
+  if (send) send.disabled = locked;
+  if (photo) photo.disabled = locked;
+  if (note) note.hidden = !locked;
+  if (composer) composer.classList.toggle("locked", locked);
+}
+async function refreshChatApp(appId) {
+  // v56: re-read the application status so an employer's accept/reject
+  // (done via the bot) unlocks the freelancer's composer while the
+  // chat is open. The composer state is toggled in place — typed text
+  // is kept.
+  if (state.view.name !== "chat" || state.view.applicationId !== appId) return;
+  let status = null;
+  if (MOCK) {
+    const a = findApplication(appId);
+    if (a) status = a.status;
+  } else {
+    try {
+      const rows = await sbSelect("applications", { select: "status", id: "eq." + appId });
+      if (rows && rows[0]) status = rows[0].status;
+    } catch (e) { return; }
+  }
+  if (!status || status === state.view.app.status) return;
+  state.view.app.status = status;
+  applyChatLock();
 }
 async function openChat(appId, back) {
   stopChatPolling();
@@ -1467,6 +1528,7 @@ function renderChat() {
     "</div></div>" +
     '<div class="chat-composer-wrap">' +
     '<div class="chat-photo-preview" id="chat-photo-preview" hidden><img id="chat-photo-thumb" alt=""><button type="button" id="chat-photo-remove">حذف ✕</button></div>' +
+    '<div class="chat-lock-note" id="chat-lock-note" hidden>منتظر جواب کارفرما هستید — تا وقتی جواب نداده نمی‌توانید پیام بفرستید.</div>' +
     '<div class="chat-composer">' +
     '<label class="chat-photo-btn" for="chat-photo-file" aria-label="فرستادن عکس">' + ICONS.image + "</label>" +
     '<input type="file" id="chat-photo-file" accept="image/*" hidden>' +
@@ -1487,6 +1549,7 @@ function renderChat() {
   viewEl().querySelectorAll(".chat-img").forEach(function (img) {
     img.addEventListener("click", function () { img.classList.toggle("full"); });
   });
+  applyChatLock(); // v56: lock the freelancer's composer until the employer answers
   setTimeout(function () { window.scrollTo(0, document.body.scrollHeight); }, 50);
 }
 /* v41: a chat photo is downscaled to max 1024px (JPEG) before sending,
@@ -1518,6 +1581,9 @@ async function sendChatMessage() {
   const body = input ? input.value.trim() : "";
   const image = state.chatImage;
   if (!body && !image) return;
+  // v56: one-message rule — the freelancer cannot send until the
+  // employer answers the first message/request.
+  if (chatLocked()) { showToast("تا وقتی کارفرما جواب نداده، نمی‌توانید پیام بفرستید."); return; }
   const app = state.view.app;
   const job = state.view.job;
   const appId = state.view.applicationId;
@@ -1776,7 +1842,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v55 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v56 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
