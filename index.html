@@ -371,7 +371,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v53</span>
+<span class="app-version" id="app-version">v54</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -771,6 +771,12 @@ async function loadMyApplications() {
   if (MOCK) {
     state.myApplications = MOCK_APPS.filter(function (a) { return a.freelancer_id === myId; })
       .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+    // v54: attach the job title + employer name like the live path, so
+    // the answered-request rows can show the employer's name.
+    state.myApplications.forEach(function (a) {
+      const j = MOCK_JOBS.find(function (x) { return x.id === a.job_id; });
+      if (j) { a.job_title = j.title; a.job_employer = j.employer_name; }
+    });
     return;
   }
   state.myApplications = await sbSelect("applications", { select: "*", freelancer_id: "eq." + myId, order: "created_at.desc" }) || [];
@@ -1174,6 +1180,18 @@ function renderMyApplications() {
     html += state.myApplications.map(function (a) {
       const job = state.jobById[a.job_id];
       const title = a.job_title || (job ? job.title : "آگهی #" + a.job_id);
+      // v54: per the user's screenshot — a request the employer has
+      // answered renders as a chat-list row, exactly like the employer's
+      // received rows: the employer's avatar + name + the first line of
+      // the answer only. No badge, no price/date, no job title — the
+      // chat top has those. Tapping the row opens the chat.
+      if (a.status === "accepted" || a.status === "rejected") {
+        const empName = a.job_employer || (job && job.employer_name) || "کارفرما";
+        const answer = a.status === "accepted" ? "درخواست شما قبول شد" : "درخواست شما رد شد";
+        return '<div class="card clickable recv-card" data-app-card="' + a.id + '">' +
+          '<div class="card-head">' + avatarHtml(empName) + '<div class="card-title">' + esc(empName) + "</div></div>" +
+          '<p class="desc recv-msg">' + esc(answer) + "</p></div>";
+      }
       // v45: the employer's answer is a plain line, not just the badge —
       // the freelancer sees at a glance whether the employer answered.
       const answerCls = a.status === "accepted" ? "accepted" : a.status === "rejected" ? "rejected" : "pending";
@@ -1773,7 +1791,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v53 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v54 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
