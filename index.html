@@ -391,7 +391,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v57</span>
+<span class="app-version" id="app-version">v58</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1584,8 +1584,6 @@ function renderFreelancerProfile() {
     html += '<div class="muted">فریلنسر هنوز جزئیات پروفایلش را ذخیره نکرده است.</div>';
   }
   if (jobTitle) html += '<div class="fp-label">برای آگهی</div><div class="meta">' + esc(jobTitle) + "</div>";
-  if (app.price) html += '<div class="fp-label">قیمت پیشنهادی</div><div class="fp-price">' + esc(app.price) + "</div>";
-  if (app.samples) html += '<div class="fp-label">نمونه‌کارها</div>' + sampleLinks(app.samples);
   html += "</div>";
   viewEl().innerHTML = html;
   viewEl().querySelector("[data-back]").addEventListener("click", function () {
@@ -1951,7 +1949,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v57 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v58 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
