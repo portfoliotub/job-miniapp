@@ -376,11 +376,22 @@
   .profile-stats { display: flex; gap: 8px; margin: 10px 12px; }
   .role-switch { margin: 18px 12px 0; }
   .tile-teal { background: #0e9594; }
+  /* v57: freelancer profile view — opened when the employer taps a
+     freelancer's avatar/name (received rows + chat header). */
+  .avatar.avatar-lg { width: 96px; height: 96px; font-size: 38px; }
+  .freelancer-profile .fp-head { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 6px 0 4px; }
+  .freelancer-profile .fp-name { font-weight: 800; font-size: 19px; margin-top: 10px; }
+  .freelancer-profile .fp-head .meta { margin-top: 2px; }
+  .freelancer-profile .fp-label { font-size: 13px; font-weight: 700; color: var(--hint); margin: 14px 0 4px; }
+  .freelancer-profile .fp-price { font-size: 17px; font-weight: 800; }
+  .freelancer-profile .fp-link { display: block; color: var(--link); text-decoration: none; font-size: 13.5px; word-break: break-all; }
+  .freelancer-profile .meta-row { justify-content: center; }
+  .card-head.profile-link { cursor: pointer; }
 </style>
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v56</span>
+<span class="app-version" id="app-version">v57</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -547,7 +558,7 @@ const MOCK_MESSAGES = [
 /* ================= state ================= */
 const state = {
   tab: "my-jobs",
-  view: { name: "my-jobs" }, // welcome | job-detail | post | my-apps | my-jobs | job-apps | chat | profile
+  view: { name: "my-jobs" }, // welcome | job-detail | post | my-apps | my-jobs | job-apps | chat | freelancer-profile | profile
   myApplications: [],
   receivedApps: [], // v48: applications received on the employer's ads
   myJobs: [],
@@ -607,6 +618,15 @@ function photoAvatarHtml(name, photo) {
     ? '<img class="avatar-photo" src="' + esc(photo) + '" alt="">'
     : "";
   return '<div class="avatar" style="background:' + avatarColor(name) + '">' +
+    esc(String(name || "?").trim().charAt(0) || "?") + img + "</div>";
+}
+/* v57: large avatar for the freelancer profile view — same letter/photo
+   fallback as photoAvatarHtml, just bigger. */
+function photoAvatarHtmlLg(name, photo) {
+  const img = photo
+    ? '<img class="avatar-photo" src="' + esc(photo) + '" alt="">'
+    : "";
+  return '<div class="avatar avatar-lg" style="background:' + avatarColor(name) + '">' +
     esc(String(name || "?").trim().charAt(0) || "?") + img + "</div>";
 }
 /* v41: the freelancer's public profile, snapshotted onto the application
@@ -1168,7 +1188,7 @@ function renderMyApplications() {
         // request message only. The ad title and the samples moved into
         // the chat top (the full message sits in a box there).
         let h = '<div class="card clickable recv-card" data-recv-card="' + a.id + '">' +
-          '<div class="card-head">' + photoAvatarHtml(name, a.freelancer_photo || "") + '<div class="card-title">' + esc(name) + "</div></div>" +
+          '<div class="card-head profile-link" data-profile="' + a.id + '">' + photoAvatarHtml(name, a.freelancer_photo || "") + '<div class="card-title">' + esc(name) + "</div></div>" +
           (a.message ? '<p class="desc recv-msg">' + esc((a.message || "").split("\n")[0]) + "</p>" : "");
         return h + "</div>";
       }).join("");
@@ -1179,6 +1199,15 @@ function renderMyApplications() {
         // v50: tapping the row opens the chat with the freelancer.
         if (ev.target.closest("a,button")) return;
         openChat(parseInt(el.getAttribute("data-recv-card"), 10), { tab: "my-apps" });
+      });
+    });
+    // v57: tapping the freelancer's avatar/name opens their profile
+    // (read-only). The head stops propagation so the row's chat
+    // handler does not fire as well.
+    viewEl().querySelectorAll("[data-recv-card] [data-profile]").forEach(function (el) {
+      el.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        openFreelancerProfile(parseInt(el.getAttribute("data-profile"), 10), { name: "my-apps" });
       });
     });
     return;
@@ -1504,6 +1533,67 @@ async function openChat(appId, back) {
   render();
   startChatPolling(app.id);
 }
+/* v57: read-only freelancer profile — opened when the employer taps a
+   freelancer's avatar/name in the received rows or the chat header.
+   `back` remembers where the user came from: {name:"my-apps"} from the
+   list, or {name:"chat", applicationId, chatBack} from a chat. */
+async function openFreelancerProfile(appId, back) {
+  let app = findApplication(appId);
+  if (!app && !MOCK) {
+    try {
+      const rows = await sbSelect("applications", { select: "*", id: "eq." + appId });
+      app = rows && rows[0];
+    } catch (e) {}
+  }
+  if (!app) { showToast("درخواست پیدا نشد"); return; }
+  let job = state.jobById[app.job_id] || null;
+  if (!job) {
+    if (MOCK) job = MOCK_JOBS.find(function (j) { return j.id === app.job_id; }) || null;
+    else {
+      try {
+        const rows = await sbSelect("jobs", { select: "*", id: "eq." + app.job_id });
+        job = rows && rows[0];
+        if (job) state.jobById[job.id] = job;
+      } catch (e) {}
+    }
+  }
+  state.view = { name: "freelancer-profile", applicationId: app.id, back: back || { name: "my-apps" }, app: app, job: job };
+  render();
+}
+function renderFreelancerProfile() {
+  const app = state.view.app;
+  const prof = app.freelancer_profile || null;
+  const hasProfile = !!(prof && (prof.skills || prof.portfolio || prof.country || prof.bio));
+  const job = state.view.job;
+  const jobTitle = app.job_title || (job && job.title);
+  // Skills as chips (country is shown as its own line above, so it is
+  // not duplicated as a chip here — profileChips would add it).
+  const skillChips = String(prof && prof.skills || "").split(/[,،]+/).map(function (s) { return s.trim(); }).filter(Boolean)
+    .map(function (s) { return '<span class="chip">' + esc(s) + "</span>"; }).join("");
+  let html = '<button class="back" data-back>› بازگشت</button>' +
+    '<div class="card freelancer-profile">' +
+    '<div class="fp-head">' + photoAvatarHtmlLg(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
+    '<div class="fp-name">' + esc(app.freelancer_name || "فریلنسر") + "</div>" +
+    ((prof && prof.country) ? '<div class="meta">کشور: ' + esc(prof.country) + "</div>" : "") +
+    "</div>";
+  if (hasProfile) {
+    if (skillChips) html += '<div class="meta-row">' + skillChips + "</div>";
+    if (prof.bio) html += '<div class="fp-label">درباره من</div><p class="desc">' + esc(prof.bio) + "</p>";
+    if (prof.portfolio) html += '<div class="fp-label">پورتفولیو</div><a class="fp-link" href="' + esc(prof.portfolio) + '" target="_blank" rel="noopener">' + ICONS.link + " " + esc(prof.portfolio) + "</a>";
+  } else {
+    html += '<div class="muted">فریلنسر هنوز جزئیات پروفایلش را ذخیره نکرده است.</div>';
+  }
+  if (jobTitle) html += '<div class="fp-label">برای آگهی</div><div class="meta">' + esc(jobTitle) + "</div>";
+  if (app.price) html += '<div class="fp-label">قیمت پیشنهادی</div><div class="fp-price">' + esc(app.price) + "</div>";
+  if (app.samples) html += '<div class="fp-label">نمونه‌کارها</div>' + sampleLinks(app.samples);
+  html += "</div>";
+  viewEl().innerHTML = html;
+  viewEl().querySelector("[data-back]").addEventListener("click", function () {
+    const back = state.view.back;
+    if (back && back.name === "chat") openChat(back.applicationId, back.chatBack || null);
+    else switchTab("my-apps");
+  });
+}
 function renderChat() {
   const app = state.view.app;
   // v51: the whole request is ONE single message at the top of the
@@ -1515,9 +1605,14 @@ function renderChat() {
   // sample links follow the message directly, one uniform message.
   var job = (state.jobs || []).find(function (j) { return j.id === app.job_id; });
   var jobTitle = app.job_title || (job && job.title);
+  // v57: the employer can tap the freelancer's avatar/name in the chat
+  // header to open their profile. The freelancer sees their own name
+  // here (v53) — no profile tap for them.
+  const profAttr = (me().id !== app.freelancer_id) ? ' data-profile="' + app.id + '"' : "";
+  const profCls = profAttr ? " profile-link" : "";
   let html = '<button class="back" data-back>› بازگشت</button>' +
     '<div class="chat-wrap">' +
-    '<div class="card chat-req"><div class="card-head">' + photoAvatarHtml(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
+    '<div class="card chat-req"><div class="card-head' + profCls + '"' + profAttr + '>' + photoAvatarHtml(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
     '<div class="card-title">' + esc(app.freelancer_name || "فریلنسر") + "</div></div>" +
     (jobTitle ? '<div class="recv-job">برای آگهی: ' + esc(jobTitle) + "</div>" : "") +
     (app.message ? '<p class="desc">' + esc(app.message) + "</p>" : "") +
@@ -1549,6 +1644,18 @@ function renderChat() {
   viewEl().querySelectorAll(".chat-img").forEach(function (img) {
     img.addEventListener("click", function () { img.classList.toggle("full"); });
   });
+  // v57: employer taps the chat header to open the freelancer's profile.
+  // The back target is captured here — the chat's own back (job-apps or
+  // my-apps) is restored when returning from the profile.
+  (function () {
+    const appId = state.view.applicationId;
+    const chatBack = state.view.back || null;
+    viewEl().querySelectorAll(".chat-req [data-profile]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        openFreelancerProfile(parseInt(el.getAttribute("data-profile"), 10), { name: "chat", applicationId: appId, chatBack: chatBack });
+      });
+    });
+  })();
   applyChatLock(); // v56: lock the freelancer's composer until the employer answers
   setTimeout(function () { window.scrollTo(0, document.body.scrollHeight); }, 50);
 }
@@ -1755,6 +1862,7 @@ function renderTabs() {
   const active = state.view.name === "job-detail" ? ""
     : state.view.name === "job-apps" ? "my-jobs"
     : state.view.name === "chat" ? (state.view.back && state.view.back.tab === "job-apps" ? "my-jobs" : "my-apps")
+    : state.view.name === "freelancer-profile" ? (state.view.back && state.view.back.name === "chat" && state.view.back.chatBack && state.view.back.chatBack.tab === "job-apps" ? "my-jobs" : "my-apps")
     : state.view.name;
   document.querySelectorAll("#tabs button").forEach(function (btn) {
     btn.classList.toggle("active", btn.getAttribute("data-tab") === active);
@@ -1764,7 +1872,7 @@ function render() {
   stopChatPolling();
   // The welcome screen has no tab bar (choose a role first); neither does
   // the chat page (it has its own back button + fixed composer).
-  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "chat") ? "none" : "";
+  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
   renderTabs();
   switch (state.view.name) {
     case "welcome": renderWelcome(); break;
@@ -1774,6 +1882,7 @@ function render() {
     case "my-jobs": renderMyJobs(); break;
     case "job-apps": renderJobApplications(); break;
     case "chat": renderChat(); break;
+    case "freelancer-profile": renderFreelancerProfile(); break;
     case "profile": renderProfile(); break;
     default:
       // Safety net for an unknown view — render the home tab's view.
@@ -1842,7 +1951,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v56 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v57 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -1863,7 +1972,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile };
 </script>
 </body>
 </html>
