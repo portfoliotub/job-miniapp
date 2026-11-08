@@ -383,9 +383,16 @@
   .freelancer-profile .fp-name { font-weight: 800; font-size: 19px; margin-top: 10px; }
   .freelancer-profile .fp-head .meta { margin-top: 2px; }
   .freelancer-profile .fp-label { font-size: 13px; font-weight: 700; color: var(--hint); margin: 14px 0 4px; }
-  /* v59: channel-art banner strip at the top of the freelancer profile
-     view (from the application snapshot); reuses .banner-wrap. */
-  .freelancer-profile .fp-banner { margin-bottom: 10px; }
+  /* v60: the profile view mirrors the freelancer's own profile form
+     card (YouTube channel style): banner as the card's top, avatar
+     overlapping its bottom edge, name centred below. */
+  .freelancer-profile { padding: 0; overflow: hidden; }
+  .freelancer-profile .fp-banner { border-radius: 0; margin-bottom: 0; }
+  .freelancer-profile .fp-head { margin: -19px 0 0; padding: 0 14px; position: relative; }
+  .freelancer-profile .fp-head .avatar { box-shadow: 0 0 0 3px var(--bg); }
+  .freelancer-profile .fp-body { padding: 2px 14px 14px; }
+  .freelancer-profile .fp-body > .muted { margin-top: 12px; }
+  .freelancer-profile .fp-value { font-size: 15px; }
   .freelancer-profile .fp-price { font-size: 17px; font-weight: 800; }
   .freelancer-profile .fp-link { display: block; color: var(--link); text-decoration: none; font-size: 13.5px; word-break: break-all; }
   .freelancer-profile .meta-row { justify-content: center; }
@@ -394,7 +401,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v59</span>
+<span class="app-version" id="app-version">v60</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -547,7 +554,7 @@ const MOCK_JOBS = [
   { id: 6, employer_id: 777, employer_name: "مریم", title: "ادیتور ویدیو برای کانال آشپزی", category: "ادیت ویدیو", budget: "$120", deadline: "2026-11-14", work_type: "دورکاری", description: "ویدیوی ۱۰ دقیقه‌ای آشپزی؛ ریتم آرام و تمیز.", status: "pending", created_at: "2026-11-03T10:00:00Z" }
 ];
 const MOCK_APPS = [
-  { id: 101, job_id: 3, freelancer_id: 777, freelancer_name: "مریم", freelancer_photo: "", freelancer_profile: { skills: "اسکریپت، مستند", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "دو سال اسکریپت مستند می‌نویسم.", banner: "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='2560'%20height='423'%3E%3Cdefs%3E%3ClinearGradient%20id='g'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%232481cc'/%3E%3Cstop%20offset='1'%20stop-color='%239fd0f7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='2560'%20height='423'%20fill='url(%23g)'/%3E%3C/svg%3E" }, samples: "https://drive.google.com/drive/folders/example1\nhttps://youtu.be/example1", price: "$70", message: "سلام! دو سال اسکریپت مستند می‌نویسم؛ نمونه‌ها رو ببینید.\nقیمت پیشنهادی: ۷۰ دلار", status: "pending", created_at: "2026-11-03T09:10:00Z" },
+  { id: 101, job_id: 3, freelancer_id: 777, freelancer_name: "مریم", freelancer_photo: "", freelancer_profile: { skills: "اسکریپت، مستند", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "دو سال اسکریپت مستند می‌نویسم.", username: "maryam_edits", banner: "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='2560'%20height='423'%3E%3Cdefs%3E%3ClinearGradient%20id='g'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%232481cc'/%3E%3Cstop%20offset='1'%20stop-color='%239fd0f7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='2560'%20height='423'%20fill='url(%23g)'/%3E%3C/svg%3E" }, samples: "https://drive.google.com/drive/folders/example1\nhttps://youtu.be/example1", price: "$70", message: "سلام! دو سال اسکریپت مستند می‌نویسم؛ نمونه‌ها رو ببینید.\nقیمت پیشنهادی: ۷۰ دلار", status: "pending", created_at: "2026-11-03T09:10:00Z" },
   { id: 102, job_id: 3, freelancer_id: 888, freelancer_name: "امیر", freelancer_photo: "", freelancer_profile: { skills: "اسکریپت", country: "ایران", portfolio: "", bio: "" }, samples: "https://drive.google.com/drive/folders/example2", price: "$90", message: "اسکریپت‌نویس کانال‌های آموزشی؛ تحویل ۲ روزه.", status: "pending", created_at: "2026-11-03T07:40:00Z" },
   { id: 103, job_id: 1, freelancer_id: 111111, freelancer_name: "کالی", freelancer_photo: "", freelancer_profile: { skills: "ادیت چالش", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "۵ سال ادیت چالش." }, samples: "https://portfoliotub.github.io", price: "$140", message: "۵ سال ادیت چالش؛ نمونه‌هام توی پورتفولیو هست.", status: "pending", created_at: "2026-11-03T08:30:00Z" },
   { id: 104, job_id: 2, freelancer_id: 111111, freelancer_name: "کالی", freelancer_photo: "", freelancer_profile: { skills: "تامنیل", country: "ایران", portfolio: "https://portfoliotub.github.io", bio: "" }, samples: "https://portfoliotub.github.io", price: "$35", message: "تامنیل گیمینگ زیاد کار کردم.", status: "accepted", created_at: "2026-11-02T16:00:00Z" }
@@ -636,7 +643,9 @@ function photoAvatarHtmlLg(name, photo) {
    at apply time so the employer can see it in the list and in the chat.
    v59: the banner (channel art) is included too — the employer sees it
    at the top of the freelancer profile view. It is a JPEG data URL,
-   downscaled to max 1280px wide when saved, so the snapshot stays small. */
+   downscaled to max 1280px wide when saved, so the snapshot stays small.
+   v60: the Telegram username is included too, so the profile view can
+   show @username under the name like the profile form does. */
 function profileSnapshot() {
   const p = getProfile();
   return {
@@ -644,7 +653,8 @@ function profileSnapshot() {
     portfolio: p.portfolio || "",
     country: p.country || "",
     bio: p.bio || "",
-    banner: p.banner || ""
+    banner: p.banner || "",
+    username: me().username || ""
   };
 }
 function profileChips(p) {
@@ -1570,33 +1580,36 @@ function renderFreelancerProfile() {
   const app = state.view.app;
   const prof = app.freelancer_profile || null;
   const hasProfile = !!(prof && (prof.skills || prof.portfolio || prof.country || prof.bio || prof.banner));
-  const job = state.view.job;
-  const jobTitle = app.job_title || (job && job.title);
-  // Skills as chips (country is shown as its own line above, so it is
-  // not duplicated as a chip here — profileChips would add it).
+  // Skills as chips (country is its own section below, so it is not
+  // duplicated as a chip here — profileChips would add it).
   const skillChips = String(prof && prof.skills || "").split(/[,،]+/).map(function (s) { return s.trim(); }).filter(Boolean)
     .map(function (s) { return '<span class="chip">' + esc(s) + "</span>"; }).join("");
-  // v59: the channel-art banner from the application snapshot, shown as
-  // a strip at the top of the card; nothing renders when the freelancer
-  // never set one (read-only view — no empty placeholder).
-  const bannerStrip = (prof && prof.banner)
-    ? '<div class="banner-wrap fp-banner"><img class="banner-img" src="' + esc(prof.banner) + '" alt=""></div>'
-    : "";
+  // v60: the profile view mirrors the freelancer's own profile form
+  // card (YouTube channel style): the banner is the card's top, the
+  // avatar overlaps its bottom edge, name centred below. The strip is
+  // always there — without a saved banner it is just the gradient.
+  // Only the form's own information shows, in the form's order:
+  // skills, portfolio link, country, bio — no job title, no price,
+  // no samples.
+  const bannerStrip = '<div class="banner-wrap fp-banner">' +
+    ((prof && prof.banner) ? '<img class="banner-img" src="' + esc(prof.banner) + '" alt="">' : "") +
+    "</div>";
   let html = '<button class="back" data-back>› بازگشت</button>' +
     '<div class="card freelancer-profile">' + bannerStrip +
     '<div class="fp-head">' + photoAvatarHtmlLg(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
     '<div class="fp-name">' + esc(app.freelancer_name || "فریلنسر") + "</div>" +
-    ((prof && prof.country) ? '<div class="meta">کشور: ' + esc(prof.country) + "</div>" : "") +
-    "</div>";
+    ((prof && prof.username) ? '<div class="meta">@' + esc(prof.username) + "</div>" : "") +
+    "</div>" +
+    '<div class="fp-body">';
   if (hasProfile) {
-    if (skillChips) html += '<div class="meta-row">' + skillChips + "</div>";
+    if (skillChips) html += '<div class="fp-label">مهارت‌ها</div><div class="meta-row">' + skillChips + "</div>";
+    if (prof.portfolio) html += '<div class="fp-label">لینک پورتفولیو / نمونه‌کار</div><a class="fp-link" href="' + esc(prof.portfolio) + '" target="_blank" rel="noopener">' + ICONS.link + " " + esc(prof.portfolio) + "</a>";
+    if (prof.country) html += '<div class="fp-label">کشور</div><div class="fp-value">' + esc(prof.country) + "</div>";
     if (prof.bio) html += '<div class="fp-label">درباره من</div><p class="desc">' + esc(prof.bio) + "</p>";
-    if (prof.portfolio) html += '<div class="fp-label">پورتفولیو</div><a class="fp-link" href="' + esc(prof.portfolio) + '" target="_blank" rel="noopener">' + ICONS.link + " " + esc(prof.portfolio) + "</a>";
   } else {
     html += '<div class="muted">فریلنسر هنوز جزئیات پروفایلش را ذخیره نکرده است.</div>';
   }
-  if (jobTitle) html += '<div class="fp-label">برای آگهی</div><div class="meta">' + esc(jobTitle) + "</div>";
-  html += "</div>";
+  html += "</div></div>";
   viewEl().innerHTML = html;
   viewEl().querySelector("[data-back]").addEventListener("click", function () {
     const back = state.view.back;
@@ -1961,7 +1974,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v59 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v60 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
