@@ -401,7 +401,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v60</span>
+<span class="app-version" id="app-version">v61</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -428,7 +428,7 @@ const STATUS_LABEL = {
   pending: "در انتظار", accepted: "قبول شد", rejected: "رد شد"
 };
 const JOB_STATUS_LABEL = {
-  open: "باز", pending: "در انتظار تایید", closed: "بسته"
+  open: "باز", pending: "در انتظار تایید", closed: "بسته", rejected: "رد شد"
 };
 
 /* ================= environment ================= */
@@ -1974,7 +1974,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v60 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v61 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
