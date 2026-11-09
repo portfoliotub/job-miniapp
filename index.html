@@ -127,7 +127,7 @@
      employer can fix it and resubmit it for review. */
   .job-edit-btn { flex-shrink: 0; align-self: flex-start; width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--secondary-bg); color: var(--hint); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
   .job-edit-btn:active { background: var(--bg); color: var(--link); }
-  .job-edit-btn:disabled { opacity: .35; cursor: default; }
+  .job-edit-btn:disabled { opacity: .5; cursor: default; } /* v64: was .35, user asked it a bit more visible */
   .my-job-details { margin-top: 10px; }
   .my-job-details .meta-row { margin: 0; }
   /* v39: a long description shows only its first 3 lines in the card
@@ -411,7 +411,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v63</span>
+<span class="app-version" id="app-version">v64</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -2075,7 +2075,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v63 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v64 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
