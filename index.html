@@ -121,9 +121,13 @@
   /* v62: pencil on each my-jobs card, top-left (the empty corner) — opens
      the post form prefilled with the ad, to edit it. The spot beside it
      is reserved for the handshake action (user order 2026-11-09: the
-     handshake does nothing yet, he will say what it does later). */
+     handshake does nothing yet, he will say what it does later).
+     v63: the pencil is LOCKED (disabled, dimmed) unless the ad was
+     rejected by the admin — only a rejected ad can be edited, so the
+     employer can fix it and resubmit it for review. */
   .job-edit-btn { flex-shrink: 0; align-self: flex-start; width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--secondary-bg); color: var(--hint); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
   .job-edit-btn:active { background: var(--bg); color: var(--link); }
+  .job-edit-btn:disabled { opacity: .35; cursor: default; }
   .my-job-details { margin-top: 10px; }
   .my-job-details .meta-row { margin: 0; }
   /* v39: a long description shows only its first 3 lines in the card
@@ -407,7 +411,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v62</span>
+<span class="app-version" id="app-version">v63</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -951,12 +955,14 @@ function mockCreateJob(p) {
   state.jobById[id] = job;
 }
 function mockUpdateJob(id, p) {
-  // Preview only: edit in place — status, employer and created_at stay.
+  // Preview only: edit in place — employer and created_at stay.
+  // v63: editing a rejected ad resubmits it for review (pending).
   const job = MOCK_JOBS.find(function (j) { return j.id === id; });
   if (!job) return;
   job.title = p.title; job.category = p.category; job.budget = p.budget || "";
   job.deadline = p.deadline || ""; job.work_type = p.work_type || "دورکاری";
   job.location = p.location || ""; job.description = p.description || "";
+  if (job.status === "rejected") job.status = "pending";
 }
 function mockApply(p) {
   const id = Math.max.apply(null, MOCK_APPS.map(function (a) { return a.id; }).concat([0])) + 1;
@@ -1191,20 +1197,26 @@ async function submitPostJob(ev) {
   if (!workType) { showToast("نوع همکاری را انتخاب کنید"); return; }
   if (workType === "حضوری" && !location) { showToast("منطقه را مشخص کنید"); return; }
   if (!payload.description) { showToast("توضیحات آگهی را وارد کنید"); return; }
-  // v62: edit mode — PATCH the existing row (status unchanged), no
-  // Telegram notify (the admin already has the notification).
+  // v62: edit mode — PATCH the existing row. v63: only a rejected ad
+  // can be edited (the pencil is locked otherwise); saving it resubmits
+  // it as pending and notifies the admin to re-review it.
   const editingId = state.editingJobId;
   if (editingId) {
+    const editingJob = state.jobById[editingId] || state.myJobs.find(function (j) { return j.id === editingId; });
+    const wasRejected = editingJob && editingJob.status === "rejected";
+    const update = {
+      title: payload.title, category: payload.category, budget: payload.budget,
+      deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
+      description: payload.description
+    };
+    if (wasRejected) update.status = "pending";
     if (MOCK) {
       mockUpdateJob(editingId, payload);
       showToast("تغییرات ذخیره شد ✓ (حالت پیش‌نمایش)");
     } else {
       try {
-        await sbUpdate("jobs", {
-          title: payload.title, category: payload.category, budget: payload.budget,
-          deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
-          description: payload.description
-        }, { id: "eq." + editingId });
+        await sbUpdate("jobs", update, { id: "eq." + editingId });
+        if (wasRejected) sendViaTelegram({ type: "notify_job_posted", job_id: editingId, title: payload.title });
         showToast("تغییرات ذخیره شد ✓");
       } catch (e) {
         showToast("خطا در ذخیره تغییرات");
@@ -1338,11 +1350,12 @@ function renderMyJobs() {
       // line, no view button, no moderation queue — nothing clickable,
       // nothing that opens. (The v45 requests line + button are removed.)
       // v62: one exception — the pencil (top-left) opens the edit form.
+      // v63: it is locked unless the ad was rejected by the admin.
       return '<div class="my-job-card">' +
         '<div class="job-row">' +
         '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
         '<div class="job-row-status">' + jobStatusBadge(job.status) + "</div></div>" +
-        '<button class="job-edit-btn" type="button" data-edit-job="' + job.id + '" aria-label="ویرایش آگهی">' + ICONS.edit + "</button>" +
+        '<button class="job-edit-btn" type="button" data-edit-job="' + job.id + '" aria-label="ویرایش آگهی"' + (job.status === "rejected" ? "" : " disabled") + '>' + ICONS.edit + "</button>" +
         "</div>" +
         ((job.category || job.work_type || job.budget || job.deadline || job.description) ?
           '<div class="my-job-details">' +
@@ -1366,11 +1379,12 @@ function renderMyJobs() {
 }
 
 /* v62: edit an ad — open the post form prefilled with the ad's data.
-   Saving PATCHes the row (status unchanged); the handshake action is
-   still undecided (user order 2026-11-09). */
+   v63: only a rejected ad can be edited (the pencil is locked
+   otherwise); saving it resubmits it as pending for re-review. */
 function openEditJob(jobId) {
   const job = state.jobById[jobId] || state.myJobs.find(function (j) { return j.id === jobId; });
   if (!job) { showToast("آگهی پیدا نشد"); return; }
+  if (job.status !== "rejected") { showToast("فقط آگهی ردشده قابل ویرایش است"); return; }
   state.editingJobId = jobId;
   state.view = { name: "post" };
   state.tab = "post";
@@ -2061,7 +2075,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v62 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v63 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
