@@ -118,6 +118,12 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   }
   .my-job-card .job-row { margin: 0; padding: 0; box-shadow: none; border-radius: 0; cursor: default; }
+  /* v62: pencil on each my-jobs card, top-left (the empty corner) — opens
+     the post form prefilled with the ad, to edit it. The spot beside it
+     is reserved for the handshake action (user order 2026-11-09: the
+     handshake does nothing yet, he will say what it does later). */
+  .job-edit-btn { flex-shrink: 0; align-self: flex-start; width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--secondary-bg); color: var(--hint); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+  .job-edit-btn:active { background: var(--bg); color: var(--link); }
   .my-job-details { margin-top: 10px; }
   .my-job-details .meta-row { margin: 0; }
   /* v39: a long description shows only its first 3 lines in the card
@@ -401,7 +407,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v61</span>
+<span class="app-version" id="app-version">v62</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -578,7 +584,8 @@ const state = {
   chatImage: null, // pending photo (data URL) attached to the next message
   jobById: {},
   loading: false,
-  error: ""
+  error: "",
+  editingJobId: null // v62: id of the ad being edited (null = new post)
 };
 
 /* ================= helpers ================= */
@@ -795,6 +802,30 @@ async function sbInsert(table, row) {
   const rows = await r.json();
   return rows && rows[0];
 }
+async function sbUpdate(table, row, params) {
+  // PATCH a row (v62: editing an ad) — same channel as sbInsert. The
+  // status is never sent here, so an edit never changes it.
+  const qs = Object.keys(params).map(function (k) {
+    return encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
+  }).join("&");
+  const r = await fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + table + "?" + qs, {
+    method: "PATCH",
+    headers: {
+      "apikey": CONFIG.SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + CONFIG.SUPABASE_ANON_KEY,
+      "Content-Type": "application/json",
+      "Prefer": "return=representation"
+    },
+    body: JSON.stringify(row)
+  });
+  if (!r.ok) {
+    let t = "";
+    try { t = await r.text(); } catch (e) {}
+    throw new Error("Supabase " + r.status + " " + t.slice(0, 120));
+  }
+  const rows = await r.json();
+  return rows && rows[0];
+}
 // Best-effort Telegram send: hands the payload to Telegram (sendData or
 // the native bridge). Returns true if the call did not throw. Never
 // throws, never blocks — the direct Supabase write is the primary path.
@@ -918,6 +949,14 @@ function mockCreateJob(p) {
   };
   MOCK_JOBS.unshift(job);
   state.jobById[id] = job;
+}
+function mockUpdateJob(id, p) {
+  // Preview only: edit in place — status, employer and created_at stay.
+  const job = MOCK_JOBS.find(function (j) { return j.id === id; });
+  if (!job) return;
+  job.title = p.title; job.category = p.category; job.budget = p.budget || "";
+  job.deadline = p.deadline || ""; job.work_type = p.work_type || "دورکاری";
+  job.location = p.location || ""; job.description = p.description || "";
 }
 function mockApply(p) {
   const id = Math.max.apply(null, MOCK_APPS.map(function (a) { return a.id; }).concat([0])) + 1;
@@ -1093,24 +1132,29 @@ function wirePicker(id, title, options, onChange) {
 }
 
 function renderPost() {
-  viewEl().innerHTML = "<h2>ثبت آگهی جدید</h2>" +
+  // v62: edit mode — the form opens prefilled with the ad's data.
+  const editing = state.editingJobId ? (state.jobById[state.editingJobId] || state.myJobs.find(function (j) { return j.id === state.editingJobId; })) : null;
+  if (state.editingJobId && !editing) state.editingJobId = null; // ad gone — fall back to a fresh post
+  const job = editing || {};
+  viewEl().innerHTML = (editing ? '<button class="back" data-back>› بازگشت</button>' : "") + "<h2>" + (editing ? "ویرایش آگهی" : "ثبت آگهی جدید") + "</h2>" +
     '<form id="post-form">' +
     '<label>عنوان آگهی</label>' +
-    '<input id="p-title" type="text" placeholder="مثلا: ادیتور ویدیوی چالش" required>' +
+    '<input id="p-title" type="text" placeholder="مثلا: ادیتور ویدیوی چالش" required value="' + esc(job.title || "") + '">' +
     '<label>دسته‌بندی</label>' +
-    pickerButton("p-category", "", "انتخاب کنید") +
+    pickerButton("p-category", job.category || "", "انتخاب کنید") +
     '<label>بودجه (دلار)</label>' +
-    '<input id="p-budget" type="text" inputmode="numeric" autocomplete="off" placeholder="مثلا 150 — حداقل ۷ دلار">' +
+    '<input id="p-budget" type="text" inputmode="numeric" autocomplete="off" placeholder="مثلا 150 — حداقل ۷ دلار" value="' + esc(String(job.budget || "").replace(/[^\d]/g, "")) + '">' +
     '<label>ددلاین</label>' +
-    pickerButton("p-deadline", "", "انتخاب کنید") +
+    pickerButton("p-deadline", job.deadline || "", "انتخاب کنید") +
     '<label>نوع همکاری</label>' +
-    pickerButton("p-work-type", "", "انتخاب کنید") +
-    '<div id="p-location-wrap" hidden><label>منطقه / شهر</label>' +
-    '<input id="p-location" type="text" placeholder="مثلا: تهران، سعادت‌آباد"></div>' +
+    pickerButton("p-work-type", job.work_type || "", "انتخاب کنید") +
+    '<div id="p-location-wrap" ' + (job.work_type === "حضوری" ? "" : "hidden") + '><label>منطقه / شهر</label>' +
+    '<input id="p-location" type="text" placeholder="مثلا: تهران، سعادت‌آباد" value="' + esc(job.location || "") + '"></div>' +
     '<label>توضیحات</label>' +
-    '<textarea id="p-description" placeholder="نوع کار، مدت ویدیو، سبک موردنظر، نحوه تحویل…"></textarea>' +
-    '<button class="btn" type="submit">انتشار آگهی</button>' +
+    '<textarea id="p-description" placeholder="نوع کار، مدت ویدیو، سبک موردنظر، نحوه تحویل…">' + esc(job.description || "") + '</textarea>' +
+    '<button class="btn" type="submit">' + (editing ? "ذخیره تغییرات" : "انتشار آگهی") + '</button>' +
     "</form>";
+  if (editing) bindBack("my-jobs");
   document.getElementById("post-form").addEventListener("submit", submitPostJob);
   // Budget accepts digits only — strip anything else as it is typed/pasted.
   document.getElementById("p-budget").addEventListener("input", function () {
@@ -1147,6 +1191,31 @@ async function submitPostJob(ev) {
   if (!workType) { showToast("نوع همکاری را انتخاب کنید"); return; }
   if (workType === "حضوری" && !location) { showToast("منطقه را مشخص کنید"); return; }
   if (!payload.description) { showToast("توضیحات آگهی را وارد کنید"); return; }
+  // v62: edit mode — PATCH the existing row (status unchanged), no
+  // Telegram notify (the admin already has the notification).
+  const editingId = state.editingJobId;
+  if (editingId) {
+    if (MOCK) {
+      mockUpdateJob(editingId, payload);
+      showToast("تغییرات ذخیره شد ✓ (حالت پیش‌نمایش)");
+    } else {
+      try {
+        await sbUpdate("jobs", {
+          title: payload.title, category: payload.category, budget: payload.budget,
+          deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
+          description: payload.description
+        }, { id: "eq." + editingId });
+        showToast("تغییرات ذخیره شد ✓");
+      } catch (e) {
+        showToast("خطا در ذخیره تغییرات");
+        return;
+      }
+    }
+    state.editingJobId = null;
+    await loadMyJobsAndApps();
+    state.view = { name: "my-jobs" }; state.tab = "my-jobs"; render();
+    return;
+  }
   if (MOCK) {
     mockCreateJob(payload);
     showToast("فرستاده شد ✓ (حالت پیش‌نمایش)");
@@ -1268,10 +1337,12 @@ function renderMyJobs() {
       // title + status badge + chips + description excerpt. No requests
       // line, no view button, no moderation queue — nothing clickable,
       // nothing that opens. (The v45 requests line + button are removed.)
+      // v62: one exception — the pencil (top-left) opens the edit form.
       return '<div class="my-job-card">' +
         '<div class="job-row">' +
         '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
         '<div class="job-row-status">' + jobStatusBadge(job.status) + "</div></div>" +
+        '<button class="job-edit-btn" type="button" data-edit-job="' + job.id + '" aria-label="ویرایش آگهی">' + ICONS.edit + "</button>" +
         "</div>" +
         ((job.category || job.work_type || job.budget || job.deadline || job.description) ?
           '<div class="my-job-details">' +
@@ -1289,6 +1360,21 @@ function renderMyJobs() {
   html += '<button class="btn btn-ghost role-switch" id="switch-role">تغییر نقش</button>';
   viewEl().innerHTML = html;
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
+  viewEl().querySelectorAll("[data-edit-job]").forEach(function (btn) {
+    btn.addEventListener("click", function (ev) { ev.stopPropagation(); openEditJob(parseInt(btn.getAttribute("data-edit-job"), 10)); });
+  });
+}
+
+/* v62: edit an ad — open the post form prefilled with the ad's data.
+   Saving PATCHes the row (status unchanged); the handshake action is
+   still undecided (user order 2026-11-09). */
+function openEditJob(jobId) {
+  const job = state.jobById[jobId] || state.myJobs.find(function (j) { return j.id === jobId; });
+  if (!job) { showToast("آگهی پیدا نشد"); return; }
+  state.editingJobId = jobId;
+  state.view = { name: "post" };
+  state.tab = "post";
+  render();
 }
 
 async function openJobApplications(jobId) {
@@ -1924,6 +2010,7 @@ async function switchTab(tab) {
   const role = getRole();
   if ((tab === "post" || tab === "my-jobs") && role === "freelancer" && !isAdmin()) tab = "my-apps";
   if (tab === "profile" && role !== "freelancer") tab = homeTab();
+  state.editingJobId = null; // v62: any tab switch cancels an edit
   state.tab = tab;
   state.error = "";
   if (tab === "post") {
@@ -1974,7 +2061,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v61 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v62 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
