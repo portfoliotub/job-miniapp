@@ -411,7 +411,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v66</span>
+<span class="app-version" id="app-version">v67</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -836,7 +836,13 @@ async function sbUpdate(table, row, params) {
     throw new Error("Supabase " + r.status + " " + t.slice(0, 120));
   }
   const rows = await r.json();
-  return rows && rows[0];
+  // v67: PostgREST returns 200 with [] when a PATCH matches zero rows
+  // (e.g. RLS blocks the update) — that is NOT a successful save. Throw
+  // so the caller shows the error toast instead of a success toast.
+  // (2026-11-09: Mr rok's job 11 edit "succeeded" on screen while the
+  // database silently ignored it — no UPDATE policy on jobs.)
+  if (!rows || !rows.length) throw new Error("Supabase PATCH updated 0 rows");
+  return rows[0];
 }
 // Best-effort Telegram send: hands the payload to Telegram (sendData or
 // the native bridge). Returns true if the call did not throw. Never
@@ -2088,7 +2094,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v66 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v67 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
