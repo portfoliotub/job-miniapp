@@ -411,7 +411,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v67</span>
+<span class="app-version" id="app-version">v68</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1061,7 +1061,21 @@ async function openJobDetail(jobId) {
   const seeApps = document.getElementById("see-apps");
   if (seeApps) seeApps.addEventListener("click", function () { openJobApplications(jobId); });
   const form = document.getElementById("apply-form");
-  if (form) form.addEventListener("submit", function (ev) { submitApply(ev, jobId); });
+  if (form) {
+    form.addEventListener("submit", function (ev) { submitApply(ev, jobId); });
+    // v68: arrived from the channel's «ارسال درخواست» button — land the
+    // user on the request box itself, ready to type, instead of the top
+    // of the ad (the form sits below the job card). Once per session.
+    if (deepJobId() === jobId && !state.deepApplyFocused) {
+      state.deepApplyFocused = true;
+      setTimeout(function () {
+        var f = document.getElementById("apply-form");
+        var msg = document.getElementById("f-message");
+        if (f) f.scrollIntoView({ behavior: "auto", block: "start" });
+        if (msg) msg.focus({ preventScroll: true });
+      }, 60);
+    }
+  }
   renderTabs();
 }
 
@@ -2094,7 +2108,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v67 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v68 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
