@@ -411,7 +411,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v64</span>
+<span class="app-version" id="app-version">v65</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -544,8 +544,16 @@ function getLaunchSource() {
   if (raw === "channel") return { key: "channel", label: "کانال تلگرام" };
   if (raw === "menu") return { key: "menu", label: "منوی ربات" };
   if (raw.indexOf("invite_") === 0) return { key: "invite", label: "دعوت یکی از کاربران" };
-  if (raw.indexOf("job_") === 0) return { key: "job", label: "آگهی شماره " + raw.slice(4) };
+  if (raw.indexOf("job_") === 0) return { key: "job", label: "آگهی شماره " + raw.slice(4), id: parseInt(raw.slice(4), 10) || null };
   return { key: "link", label: "لینک «" + raw + "»" };
+}
+/* v65: the channel deep link — start_param job_<id> (or ?startapp= /
+   ?src= with the same value) opens that ad's detail, with the apply
+   form, instead of the home tab. Used at boot and after the role is
+   chosen on the welcome screen. */
+function deepJobId() {
+  const src = getLaunchSource();
+  return src.key === "job" ? src.id : null;
 }
 function getProfile() {
   try { return JSON.parse(store.get(PROFILE_KEY) || "{}") || {}; } catch (e) { return {}; }
@@ -1883,7 +1891,10 @@ function renderWelcome() {
   viewEl().querySelectorAll("[data-role]").forEach(function (el) {
     el.addEventListener("click", function () {
       setRole(el.getAttribute("data-role"));
-      switchTab(homeTab());
+      // v65: came from a channel job link — open that ad's detail
+      // (with the apply form) instead of the home tab.
+      const dj = deepJobId();
+      if (dj) openJobDetail(dj); else switchTab(homeTab());
     });
   });
   const back = document.getElementById("welcome-back");
@@ -2075,7 +2086,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v64 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v65 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2088,15 +2099,18 @@ async function switchTab(tab) {
     } catch (e) {}
   }
   // First launch: welcome screen (source + role choice). Returning users
-  // land straight in their role's environment.
-  if (!getRole()) { state.view = { name: "welcome" }; render(); }
-  else switchTab(homeTab());
+  // land straight in their role's environment — or, on a channel job
+  // link (v65), straight on that ad's detail.
   // Preload my applications so job details can show "already applied".
-  loadMyApplications().catch(function () {});
+  const preload = loadMyApplications().catch(function () {});
+  const dj = deepJobId();
+  if (!getRole()) { state.view = { name: "welcome" }; render(); }
+  else if (dj) { preload.then(function () { openJobDetail(dj); }); }
+  else switchTab(homeTab());
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile };
 </script>
 </body>
 </html>
