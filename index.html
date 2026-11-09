@@ -411,7 +411,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v65</span>
+<span class="app-version" id="app-version">v66</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1225,7 +1225,9 @@ async function submitPostJob(ev) {
       try {
         await sbUpdate("jobs", update, { id: "eq." + editingId });
         if (wasRejected) sendViaTelegram({ type: "notify_job_posted", job_id: editingId, title: payload.title });
-        showToast("تغییرات ذخیره شد ✓");
+        // v66 (site counterpart of the resubmit fix): the employer sees
+        // that the ad went back for review, not just that it saved.
+        showToast(wasRejected ? "تغییرات ذخیره شد ✓ — آگهی دوباره برای تایید فرستاده شد" : "تغییرات ذخیره شد ✓");
       } catch (e) {
         showToast("خطا در ذخیره تغییرات");
         return;
@@ -2086,7 +2088,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v65 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v66 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
