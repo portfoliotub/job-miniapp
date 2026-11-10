@@ -411,7 +411,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v68</span>
+<span class="app-version" id="app-version">v70</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1510,10 +1510,33 @@ function renderJobApplications() {
     el.addEventListener("click", function () { setJobStatus(parseInt(el.getAttribute("data-approve-job"), 10), "open"); });
   });
 }
-function setAppStatus(appId, status) {
-  const payload = { type: "set_application_status", application_id: appId, status: status };
-  sendToBot(payload, function () { mockSetStatus(payload); });
-  if (MOCK) render();
+async function setAppStatus(appId, status) {
+  // v70: the decision is a row in decision_requests, which the bot polls
+  // (it verifies the decider is the employer, applies the status, and
+  // notifies the freelancer). sendData is best-effort only — it
+  // essentially never arrives (the app is usually opened from the menu
+  // button), so a tap that only sent data showed a success toast while
+  // nothing happened. The direct insert IS the durable signal.
+  if (MOCK) {
+    mockSetStatus({ application_id: appId, status: status });
+    render();
+    return;
+  }
+  try {
+    await sbInsert("decision_requests", {
+      application_id: appId,
+      new_status: status,
+      decided_by: me().id
+    });
+    sendViaTelegram({ type: "set_application_status", application_id: appId, status: status });
+    // Optimistic local update so the card flips at once; the bot
+    // applies the same status to the database within a minute.
+    mockSetStatus({ application_id: appId, status: status });
+    showToast("فرستاده شد ✓");
+    render();
+  } catch (e) {
+    showToast("ارسال نشد — دوباره امتحان کن");
+  }
 }
 function setJobStatus(jobId, status) {
   const payload = { type: "set_job_status", job_id: jobId, status: status };
@@ -2108,7 +2131,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v68 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v70 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
