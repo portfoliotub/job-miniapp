@@ -411,7 +411,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v70</span>
+<span class="app-version" id="app-version">v71</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1024,6 +1024,7 @@ async function openJobDetail(jobId) {
     viewEl().innerHTML = '<button class="back" data-back>› بازگشت</button>' + emptyState("این آگهی پیدا نشد", "ممکن است حذف شده باشد.");
     bindBack(homeTab());
     renderTabs();
+    syncTgBackButton(); // v71: openJobDetail renders after render() returns
     return;
   }
   const mine = job.employer_id === me().id;
@@ -1077,6 +1078,7 @@ async function openJobDetail(jobId) {
     }
   }
   renderTabs();
+  syncTgBackButton(); // v71: openJobDetail renders after render() returns
 }
 
 async function submitApply(ev, jobId) {
@@ -2007,6 +2009,21 @@ function bindBack(tab) {
   if (b) b.addEventListener("click", function () { switchTab(tab); });
 }
 
+/* v71: the phone's own back button — Telegram routes the system back
+   to the WebApp ONLY while tg.BackButton is visible; otherwise the
+   press closes the whole Mini App. Every view that already has an
+   in-app «بازگشت» button shows Telegram's BackButton, and tapping it
+   does exactly what that button does — one step back, never a close.
+   Top-level tab views show no BackButton, so the system back still
+   closes the app from there (standard Telegram behaviour). */
+function tgBackTarget() {
+  return viewEl().querySelector("[data-back]") || document.getElementById("welcome-back");
+}
+function syncTgBackButton() {
+  if (!tg || !tg.BackButton) return;
+  try { if (tgBackTarget()) tg.BackButton.show(); else tg.BackButton.hide(); } catch (e) {}
+}
+
 /* ================= tabs =================
    v46: the jobs tab is gone — no job browsing anywhere. Employers (admin
    included) see 3 tabs with Post Ad in the middle; the admin moderation
@@ -2069,6 +2086,7 @@ function render() {
       else if (homeTab() === "post") renderPost();
       else renderMyApplications();
   }
+  syncTgBackButton(); // v71: show Telegram's BackButton on nested views
   mountDucks();
 }
 async function switchTab(tab) {
@@ -2131,7 +2149,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v70 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v71 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2142,6 +2160,12 @@ async function switchTab(tab) {
       if (tg.setHeaderColor && tg.themeParams) tg.setHeaderColor(tg.themeParams.bg_color || "#ffffff");
       if (tg.setBackgroundColor && tg.themeParams) tg.setBackgroundColor(tg.themeParams.bg_color || "#ffffff");
     } catch (e) {}
+  }
+  // v71: route the phone's system back button through Telegram's
+  // BackButton — it fires exactly the in-app «بازگشت» of the current
+  // view (see tgBackTarget), so the app steps back instead of closing.
+  if (tg && tg.BackButton && tg.BackButton.onClick) {
+    try { tg.BackButton.onClick(function () { var b = tgBackTarget(); if (b) b.click(); }); } catch (e) {}
   }
   // First launch: welcome screen (source + role choice). Returning users
   // land straight in their role's environment — or, on a channel job
