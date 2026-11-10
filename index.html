@@ -424,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v74</span>
+<span class="app-version" id="app-version">v75</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -2111,6 +2111,10 @@ async function sendChatMessage() {
   const app = state.view.app;
   const job = state.view.job;
   const appId = state.view.applicationId;
+  // v75: the id of the row just saved — the bot's poll notifies for
+  // chat messages too, and this id lets it skip a message it already
+  // pushed via sendData, so the other side is never notified twice.
+  let sentId = null;
   if (input) input.value = "";
   state.chatImage = null;
   const prev = document.getElementById("chat-photo-preview");
@@ -2122,6 +2126,7 @@ async function sendChatMessage() {
       body: body, image: image || "", created_at: new Date().toISOString()
     };
     MOCK_MESSAGES.push(row);
+    sentId = row.id;
     state.chatMessages[appId] = (state.chatMessages[appId] || []).concat([row]);
     refreshChatMessages();
   } else {
@@ -2131,6 +2136,7 @@ async function sendChatMessage() {
         body: body, image: image || ""
       });
       if (saved) {
+        sentId = saved.id;
         state.chatMessages[appId] = (state.chatMessages[appId] || []).concat([saved]);
         refreshChatMessages();
       } else {
@@ -2149,6 +2155,7 @@ async function sendChatMessage() {
   if (toId && toId !== me().id) {
     sendViaTelegram({
       type: "chat_message", application_id: appId, to_id: toId,
+      message_id: sentId,
       job_title: job ? job.title : (app.job_title || ""),
       from_name: me().name, preview: body ? body.slice(0, 80) : "📷 عکس"
     });
@@ -2397,7 +2404,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v74 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v75 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
