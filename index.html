@@ -424,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v76</span>
+<span class="app-version" id="app-version">v77</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -606,6 +606,12 @@ const state = {
   jobApplications: {}, // jobId -> [applications]
   chatMessages: {}, // applicationId -> [messages]
   chatTimer: null, // polling interval while a chat is open
+  rtSocket: null, // v77: Realtime WebSocket while a chat is open
+  rtTimer: null, // v77: Realtime heartbeat interval
+  rtRetry: null, // v77: Realtime reconnect timeout
+  rtAppId: null, // v77: application the Realtime socket is subscribed to
+  rtStatus: "off", // v77: off | connecting | on | unavailable
+  rtDebug: null, // v77: last Realtime join attempt {appId, topic, filter} (test hook)
   unread: {}, // v72: applicationId -> has an unseen message/decision
   listTimer: null, // v72: 10s refresh of the my-apps list + unread badge (v76: was 20s)
   chatImage: null, // pending photo (data URL) attached to the next message
@@ -1866,6 +1872,105 @@ function startChatPolling(appId) {
     if (state.view.app && me().id === state.view.app.freelancer_id && state.view.app.status === "pending") refreshChatApp(appId);
   }, 3000);
 }
+/* v77: Supabase Realtime for the open chat — a new message arrives over
+   a WebSocket the instant it is inserted, instead of waiting for the
+   next 3s poll tick. Plain WebSocket + the Realtime (Phoenix) join
+   message, no library and no CDN — the same rule as the REST reads.
+   The 3s delta poll stays untouched as the fallback: if the socket
+   never connects (offline, or Realtime not enabled for the table) the
+   chat behaves exactly as before. The table still needs Realtime
+   enabled on the Supabase side (ALTER PUBLICATION ... ADD TABLE
+   public.messages) or the socket joins but no event ever arrives. */
+const RT_TOPIC = "realtime:public:messages";
+function rtWsUrl() {
+  return CONFIG.SUPABASE_URL.replace(/^http/, "ws") + "/realtime/v1/websocket?apikey=" + encodeURIComponent(CONFIG.SUPABASE_ANON_KEY) + "&vsn=1.0.0";
+}
+function stopChatRealtime() {
+  if (state.rtTimer) { clearInterval(state.rtTimer); state.rtTimer = null; }
+  if (state.rtRetry) { clearTimeout(state.rtRetry); state.rtRetry = null; }
+  if (state.rtSocket) { try { state.rtSocket.close(); } catch (e) {} state.rtSocket = null; }
+  state.rtAppId = null;
+  state.rtStatus = "off";
+  state.rtDebug = null;
+}
+function rtOnInsert(record) {
+  // One INSERT event from Realtime — the same row shape the REST read
+  // returns, so it renders through the same code path. Dedup by id:
+  // the sender already appended their own message optimistically, and
+  // the 3s poll may fetch the same row in the same tick.
+  if (!record || record.application_id == null) return false;
+  var appId = record.application_id;
+  var list = state.chatMessages[appId] || [];
+  if (list.some(function (m) { return m.id === record.id; })) return false;
+  list.push(record);
+  list.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+  state.chatMessages[appId] = list;
+  if (state.view.name === "chat" && state.view.applicationId === appId) {
+    refreshChatMessages();
+    applyChatLock();
+    markRead(appId);
+  }
+  return true;
+}
+function startChatRealtime(appId) {
+  stopChatRealtime();
+  state.rtAppId = appId;
+  // Test hook (also the only trace in mock mode): the exact
+  // subscription this chat would open — topic + row filter.
+  state.rtDebug = { appId: appId, topic: RT_TOPIC, filter: "application_id=eq." + appId };
+  if (MOCK || typeof WebSocket === "undefined") { state.rtStatus = "off"; return; }
+  var attempts = 0;
+  function connect() {
+    if (state.view.name !== "chat" || state.view.applicationId !== appId) return;
+    state.rtStatus = "connecting";
+    var ws;
+    try { ws = new WebSocket(rtWsUrl()); } catch (e) { state.rtStatus = "unavailable"; return; }
+    state.rtSocket = ws;
+    var ref = 1;
+    var joined = false;
+    ws.onopen = function () {
+      try {
+        ws.send(JSON.stringify({ topic: RT_TOPIC, event: "phx_join", payload: { config: { broadcast: { self: false }, presence: { key: "" }, postgres_changes: [{ event: "INSERT", schema: "public", table: "messages", filter: "application_id=eq." + appId }] } }, ref: String(ref++) }));
+      } catch (e) {}
+    };
+    ws.onmessage = function (ev) {
+      var msg = null;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (msg.event === "phx_reply") {
+        if (msg.payload && msg.payload.status === "ok") {
+          if (!joined) {
+            joined = true;
+            state.rtStatus = "on";
+            state.rtTimer = setInterval(function () {
+              try { ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: String(ref++) })); } catch (e) {}
+            }, 25000);
+          }
+        } else if (!joined) {
+          // Join rejected (e.g. Realtime off for the table) — close so
+          // the reconnect below can retry, then give up to the poll.
+          try { ws.close(); } catch (e) {}
+        }
+      } else if (msg.event === "postgres_changes" && msg.payload && msg.payload.data && msg.payload.data.type === "INSERT") {
+        rtOnInsert(msg.payload.data.record);
+      }
+    };
+    function dead() {
+      if (state.rtSocket !== ws) return;
+      state.rtSocket = null;
+      if (state.rtTimer) { clearInterval(state.rtTimer); state.rtTimer = null; }
+      if (state.view.name === "chat" && state.view.applicationId === appId && attempts < 3) {
+        attempts++;
+        state.rtStatus = "connecting";
+        state.rtRetry = setTimeout(connect, 5000);
+      } else {
+        state.rtStatus = "unavailable";
+      }
+    }
+    ws.onclose = dead;
+    ws.onerror = function () { /* onclose follows; dead() handles it */ };
+  }
+  connect();
+}
 /* v56: one-message rule — a freelancer may send only the application
    (their first message) until the employer answers it, either with a
    chat reply or by accepting/rejecting the request. Until then the
@@ -1948,6 +2053,7 @@ async function openChat(appId, back) {
   render();
   markRead(app.id); // v72: opening the chat marks its messages as seen
   startChatPolling(app.id);
+  startChatRealtime(app.id);
 }
 /* v57: read-only freelancer profile — opened when the employer taps a
    freelancer's avatar/name in the received rows or the chat header.
@@ -2323,6 +2429,7 @@ function renderTabs() {
 }
 function render() {
   stopChatPolling();
+  stopChatRealtime();
   // The welcome screen has no tab bar (choose a role first); neither does
   // the chat page (it has its own back button + fixed composer).
   document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
@@ -2417,7 +2524,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v76 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v77 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2452,7 +2559,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
