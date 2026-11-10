@@ -295,7 +295,7 @@
     flex: 1; background: none; border: none; cursor: pointer;
     color: var(--hint); font: inherit; font-size: 11.5px;
     display: flex; flex-direction: column; align-items: center; gap: 2px;
-    padding: 4px 0;
+    padding: 4px 0; position: relative;
   }
   nav#tabs button .ico {
     width: 30px; height: 30px; border-radius: 9px;
@@ -308,6 +308,19 @@
   .tile-purple { background: #af52de; }
   .tile-orange { background: #ff9500; }
   nav#tabs button.active { color: var(--link); font-weight: 700; }
+  /* v72: unread markers — a count pill on the my-apps tab and a red
+     dot on the chat-list row that has a new, unseen message. */
+  .tab-badge {
+    position: absolute; top: 0; inset-inline-start: calc(50% + 8px);
+    min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+    background: #e5484d; color: #fff; font-size: 10.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+  }
+  .recv-card { position: relative; }
+  .unread-dot {
+    position: absolute; top: 12px; inset-inline-end: 12px;
+    width: 10px; height: 10px; border-radius: 50%; background: #e5484d;
+  }
   #toast {
     position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%) translateY(8px);
     background: #222; color: #fff; font-size: 14px;
@@ -411,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v71</span>
+<span class="app-version" id="app-version">v72</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -593,6 +606,8 @@ const state = {
   jobApplications: {}, // jobId -> [applications]
   chatMessages: {}, // applicationId -> [messages]
   chatTimer: null, // polling interval while a chat is open
+  unread: {}, // v72: applicationId -> has an unseen message/decision
+  listTimer: null, // v72: 20s refresh of the my-apps list + unread badge
   chatImage: null, // pending photo (data URL) attached to the next message
   jobById: {},
   loading: false,
@@ -1294,6 +1309,140 @@ async function submitPostJob(ev) {
   showToast("ارسال نشد — دوباره امتحان کن");
 }
 
+/* ================= unread markers (v72) =================
+   A red dot on a chat-list row + a count pill on the «درخواست‌های من»
+   tab when a new, unseen message arrived. Read state lives in
+   localStorage (yt_read) per application: {seen, status, msgId} —
+   seen = the chat was opened at least once, status = the application
+   status last seen, msgId = the highest chat-message id seen in that
+   thread. A row is unread when: its request was never opened
+   (employer side), a decision landed since it was last seen
+   (freelancer side), or the other side sent a chat message newer
+   than the last one seen. The bot already sends a Telegram notice per
+   message, so no bot change is needed — this is the in-app mark. */
+const READ_KEY = "yt_read";
+function getReadState() {
+  try { return JSON.parse(store.get(READ_KEY) || "{}") || {}; } catch (e) { return {}; }
+}
+function saveReadState(r) {
+  try { store.set(READ_KEY, JSON.stringify(r || {})); } catch (e) {}
+}
+async function latestOtherMessage(appId) {
+  const mine = me().id;
+  if (MOCK) {
+    const list = MOCK_MESSAGES.filter(function (m) { return m.application_id === appId && m.sender_id !== mine; });
+    return list.length ? list[list.length - 1] : null;
+  }
+  try {
+    const rows = await sbSelect("messages", { select: "id,sender_id,created_at", application_id: "eq." + appId, order: "created_at.desc", limit: 1 });
+    if (!rows || !rows.length) return null;
+    // The latest message is mine — I must have opened the chat to write
+    // it, so anything older was already seen then.
+    return rows[0].sender_id === mine ? null : rows[0];
+  } catch (e) { return null; }
+}
+async function loadUnread(apps, employerSide) {
+  const read = getReadState();
+  const out = {};
+  for (let i = 0; i < apps.length; i++) {
+    const a = apps[i];
+    const r = read[a.id] || {};
+    let unread = false;
+    if (!r.seen) {
+      if (employerSide) unread = true; // a new request on my ad
+      else if (a.status && a.status !== "pending") unread = true; // a decision already made
+    } else if (r.status && a.status && r.status !== a.status && a.status !== "pending") {
+      unread = true; // decided since I last looked
+    }
+    if (!unread) {
+      const latest = await latestOtherMessage(a.id);
+      if (latest && (!r.msgId || latest.id > r.msgId)) unread = true;
+    }
+    out[a.id] = unread;
+  }
+  state.unread = out;
+  return out;
+}
+function markRead(appId) {
+  const read = getReadState();
+  const app = findApplication(appId);
+  const list = state.chatMessages[appId] || [];
+  let maxId = 0;
+  list.forEach(function (m) { if (m.id && m.id > maxId) maxId = m.id; });
+  const prev = read[appId] || {};
+  read[appId] = {
+    seen: true,
+    status: app ? app.status : (prev.status || "pending"),
+    msgId: Math.max(maxId, prev.msgId || 0)
+  };
+  saveReadState(read);
+  if (state.unread[appId]) { state.unread[appId] = false; paintUnread(); }
+}
+function unreadTotal() {
+  let n = 0;
+  Object.keys(state.unread).forEach(function (k) { if (state.unread[k]) n++; });
+  return n;
+}
+function syncUnreadBadges() {
+  const badge = document.getElementById("tab-badge-my-apps");
+  if (!badge) return;
+  const n = unreadTotal();
+  badge.hidden = n === 0;
+  badge.textContent = n > 9 ? "9+" : String(n);
+}
+function paintUnread() {
+  // Update the row dots in place (no full re-render, so scroll and typed
+  // text survive a poll tick) and refresh the tab count.
+  document.querySelectorAll("[data-recv-card],[data-app-card]").forEach(function (el) {
+    const id = parseInt(el.getAttribute("data-recv-card") || el.getAttribute("data-app-card"), 10);
+    const unread = !!state.unread[id];
+    let dot = el.querySelector(".unread-dot");
+    if (unread && !dot) {
+      dot = document.createElement("span");
+      dot.className = "unread-dot";
+      el.appendChild(dot);
+    } else if (!unread && dot) {
+      dot.remove();
+    }
+  });
+  syncUnreadBadges();
+}
+function myAppsList() {
+  return (getRole() === "employer" && !state.view.own) ? state.receivedApps : state.myApplications;
+}
+function myAppsEmployerSide() {
+  return getRole() === "employer" && !state.view.own;
+}
+async function refreshUnread() {
+  // Loads the my-apps list (employer: received, freelancer: own) and
+  // recomputes unread — used at boot, on the tab, and by the poll.
+  // Never renders by itself; callers decide whether to repaint.
+  try {
+    if (myAppsEmployerSide()) await loadReceivedApplications();
+    else await loadMyApplications();
+  } catch (e) { return false; }
+  await loadUnread(myAppsList(), myAppsEmployerSide());
+  paintUnread();
+  return true;
+}
+function myAppsSignature() {
+  return JSON.stringify(myAppsList().map(function (a) { return [a.id, a.status, !!state.unread[a.id]]; }));
+}
+async function refreshMyApps() {
+  // Periodic refresh while the app is open: a new message or a new
+  // application shows its dot (and the tab count) without the user
+  // having to switch tabs. Re-renders the list only when something
+  // actually changed, so scroll and typed text are untouched.
+  const before = myAppsSignature();
+  const ok = await refreshUnread();
+  if (!ok) return;
+  if (state.view.name === "my-apps" && myAppsSignature() !== before) render();
+}
+function startListPolling() {
+  if (state.listTimer) return;
+  state.listTimer = setInterval(function () { refreshMyApps().catch(function () {}); }, 20000);
+}
+
 function renderMyApplications() {
   let html = "<h2>درخواست‌های من</h2>";
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
@@ -1317,6 +1466,7 @@ function renderMyApplications() {
         // request message only. The ad title and the samples moved into
         // the chat top (the full message sits in a box there).
         let h = '<div class="card clickable recv-card" data-recv-card="' + a.id + '">' +
+          (state.unread[a.id] ? '<span class="unread-dot"></span>' : "") +
           '<div class="card-head profile-link" data-profile="' + a.id + '">' + photoAvatarHtml(name, a.freelancer_photo || "") + '<div class="card-title">' + esc(name) + "</div></div>" +
           (a.message ? '<p class="desc recv-msg">' + esc((a.message || "").split("\n")[0]) + "</p>" : "");
         return h + "</div>";
@@ -1358,6 +1508,7 @@ function renderMyApplications() {
         : a.status === "rejected" ? "درخواست شما رد شد"
         : "هنوز جواب نداده است";
       return '<div class="card clickable recv-card" data-app-card="' + a.id + '">' +
+        (state.unread[a.id] ? '<span class="unread-dot"></span>' : "") +
         '<div class="card-head">' + avatarHtml(empName) + '<div class="card-title">' + esc(empName) + "</div></div>" +
         '<p class="desc recv-msg">' + esc(answer) + "</p></div>";
     }).join("");
@@ -1620,7 +1771,7 @@ function startChatPolling(appId) {
   stopChatPolling();
   state.chatTimer = setInterval(function () {
     if (state.view.name !== "chat" || state.view.applicationId !== appId) { stopChatPolling(); return; }
-    loadChatMessages(appId).then(function () { refreshChatMessages(); applyChatLock(); }).catch(function () {});
+    loadChatMessages(appId).then(function () { refreshChatMessages(); applyChatLock(); markRead(appId); }).catch(function () {});
     refreshChatApp(appId);
   }, 5000);
 }
@@ -1702,6 +1853,7 @@ async function openChat(appId, back) {
   render();
   try { await loadChatMessages(app.id); state.loading = false; } catch (e) { state.loading = false; state.error = "خطا در بارگذاری پیام‌ها: " + e.message; }
   render();
+  markRead(app.id); // v72: opening the chat marks its messages as seen
   startChatPolling(app.id);
 }
 /* v57: read-only freelancer profile — opened when the employer taps a
@@ -2046,7 +2198,8 @@ function buildTabs() {
   const nav = document.getElementById("tabs");
   nav.innerHTML = tabs.map(function (t) {
     const d = TAB_DEFS[t];
-    return '<button data-tab="' + t + '"><span class="ico ' + d.tile + '">' + d.icon + "</span>" + d.label + "</button>";
+    // v72: the my-apps tab carries the unread count pill.
+    return '<button data-tab="' + t + '">' + (t === "my-apps" ? '<span class="tab-badge" id="tab-badge-my-apps" hidden></span>' : "") + '<span class="ico ' + d.tile + '">' + d.icon + "</span>" + d.label + "</button>";
   }).join("");
   nav.querySelectorAll("button").forEach(function (btn) {
     btn.addEventListener("click", function () { switchTab(btn.getAttribute("data-tab")); });
@@ -2087,6 +2240,7 @@ function render() {
       else renderMyApplications();
   }
   syncTgBackButton(); // v71: show Telegram's BackButton on nested views
+  syncUnreadBadges(); // v72: keep the my-apps tab count in step
   mountDucks();
 }
 async function switchTab(tab) {
@@ -2106,6 +2260,7 @@ async function switchTab(tab) {
     render();
   } else if (tab === "my-apps") {
     state.view = { name: "my-apps" };
+    state.unread = {}; // v72: stale dots cleared until the fresh read lands
     state.loading = true; render();
     try {
       // v48: employers see the applications received on their ads;
@@ -2114,6 +2269,7 @@ async function switchTab(tab) {
       state.loading = false;
     } catch (e) { state.loading = false; state.error = "خطا در بارگذاری: " + e.message; }
     render();
+    refreshUnread().catch(function () {}); // v72: paint unread dots after the list loads
   } else if (tab === "my-jobs") {
     state.view = { name: "my-jobs" };
     state.loading = true; render();
@@ -2149,7 +2305,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v71 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v72 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2176,10 +2332,15 @@ async function switchTab(tab) {
   if (!getRole()) { state.view = { name: "welcome" }; render(); }
   else if (dj) { preload.then(function () { openJobDetail(dj); }); }
   else switchTab(homeTab());
+  // v72: the unread badge stays live while the app is open (20s
+  // refresh of the my-apps list) and is computed once at boot so the
+  // tab count is right even before the tab is visited.
+  startListPolling();
+  refreshMyApps().catch(function () {});
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
