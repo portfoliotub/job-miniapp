@@ -424,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v73</span>
+<span class="app-version" id="app-version">v74</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -793,17 +793,20 @@ function showToast(msg) {
 
 /* ================= data: reads (Supabase SELECT only / mock) ================= */
 /* Supabase REST read (anon key, SELECT only) via plain fetch — no library. */
-/* v73: every Supabase call has an 8s timeout, and reads retry once.
-   Measured 2026-11-10: one GET costs ~0.7–1.5s here and ~1 in 8 drops
-   (RemoteDisconnected) — before this, a stalled read hung the screen
-   until fetch gave up. Writes get the timeout but NO retry: a lost POST
-   response may mean the row was created, and retrying could duplicate it. */
+/* v73: every Supabase call has a timeout, and reads retry once.
+   v74: the timeout is 30s, not 8s — 8s was too aggressive for a slow
+   mobile connection (a photo upload or a slow read that used to finish
+   in 10–15s was aborted instead, so messages stopped arriving on the
+   phone; measured from the server the reads take ~0.7–1.5s, but the
+   phone's path can be far slower). A request slower than 30s is truly
+   dead. Writes get the timeout but NO retry: a lost POST response may
+   mean the row was created, and retrying could duplicate it. */
 function sbFetch(url, opts, timeoutMs) {
   var ctrl = null, timer = null;
   try {
     if (typeof AbortController !== "undefined") {
       ctrl = new AbortController();
-      timer = setTimeout(function () { ctrl.abort(); }, timeoutMs || 8000);
+      timer = setTimeout(function () { ctrl.abort(); }, timeoutMs || 30000);
     }
   } catch (e) {}
   var o = Object.assign({}, opts || {});
@@ -1489,10 +1492,18 @@ async function refreshMyApps() {
   // application shows its dot (and the tab count) without the user
   // having to switch tabs. Re-renders the list only when something
   // actually changed, so scroll and typed text are untouched.
-  const before = myAppsSignature();
-  const ok = await refreshUnread();
-  if (!ok) return;
-  if (state.view.name === "my-apps" && myAppsSignature() !== before) render();
+  // v74: never stack refreshes — a slow read can outlive the 20s
+  // interval, and parallel refreshes made the list feel slower.
+  if (state.listRefreshing) return;
+  state.listRefreshing = true;
+  try {
+    const before = myAppsSignature();
+    const ok = await refreshUnread();
+    if (!ok) return;
+    if (state.view.name === "my-apps" && myAppsSignature() !== before) render();
+  } finally {
+    state.listRefreshing = false;
+  }
 }
 function startListPolling() {
   if (state.listTimer) return;
@@ -1837,7 +1848,12 @@ function startChatPolling(appId) {
   stopChatPolling();
   state.chatTimer = setInterval(function () {
     if (state.view.name !== "chat" || state.view.applicationId !== appId) { stopChatPolling(); return; }
-    loadChatMessages(appId).then(function () { refreshChatMessages(); applyChatLock(); markRead(appId); }).catch(function () {});
+    // v74: never stack ticks — with a 30s timeout a slow fetch can
+    // outlive the 3s interval, and piling up parallel reads is exactly
+    // what made receiving feel slower.
+    if (state.chatLoading) return;
+    state.chatLoading = true;
+    loadChatMessages(appId).then(function () { refreshChatMessages(); applyChatLock(); markRead(appId); }).catch(function () {}).then(function () { state.chatLoading = false; });
     // v73: the per-tick status re-read exists only for the one-message
     // rule — it matters only while the freelancer waits on a pending
     // decision. Employer side and decided chats skip the extra GET.
@@ -2381,7 +2397,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v73 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v74 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
