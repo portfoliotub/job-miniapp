@@ -424,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v72</span>
+<span class="app-version" id="app-version">v73</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -793,25 +793,60 @@ function showToast(msg) {
 
 /* ================= data: reads (Supabase SELECT only / mock) ================= */
 /* Supabase REST read (anon key, SELECT only) via plain fetch — no library. */
+/* v73: every Supabase call has an 8s timeout, and reads retry once.
+   Measured 2026-11-10: one GET costs ~0.7–1.5s here and ~1 in 8 drops
+   (RemoteDisconnected) — before this, a stalled read hung the screen
+   until fetch gave up. Writes get the timeout but NO retry: a lost POST
+   response may mean the row was created, and retrying could duplicate it. */
+function sbFetch(url, opts, timeoutMs) {
+  var ctrl = null, timer = null;
+  try {
+    if (typeof AbortController !== "undefined") {
+      ctrl = new AbortController();
+      timer = setTimeout(function () { ctrl.abort(); }, timeoutMs || 8000);
+    }
+  } catch (e) {}
+  var o = Object.assign({}, opts || {});
+  if (ctrl) o.signal = ctrl.signal;
+  var p = fetch(url, o);
+  if (timer) {
+    p = p.then(function (r) { clearTimeout(timer); return r; },
+               function (e) { clearTimeout(timer); throw e; });
+  }
+  return p;
+}
 async function sbSelect(table, params) {
   const qs = Object.keys(params).map(function (k) {
     return encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
   }).join("&");
-  const r = await fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + table + "?" + qs, {
-    headers: { "apikey": CONFIG.SUPABASE_ANON_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_ANON_KEY }
-  });
-  if (!r.ok) {
-    let t = "";
-    try { t = await r.text(); } catch (e) {}
-    throw new Error("Supabase " + r.status + " " + t.slice(0, 120));
+  const url = CONFIG.SUPABASE_URL + "/rest/v1/" + table + "?" + qs;
+  const headers = { "apikey": CONFIG.SUPABASE_ANON_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_ANON_KEY };
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await sbFetch(url, { headers: headers });
+      if (!r.ok) {
+        let t = "";
+        try { t = await r.text(); } catch (e) {}
+        // A 4xx is a real error (bad query, missing column) — retrying
+        // never helps. 5xx / network drops get one more attempt.
+        if (r.status >= 400 && r.status < 500) throw new Error("Supabase " + r.status + " " + t.slice(0, 120));
+        throw new Error("Supabase " + r.status + " " + t.slice(0, 120));
+      }
+      return r.json();
+    } catch (e) {
+      lastErr = e;
+      if (String(e.message || "").indexOf("Supabase 4") === 0) break;
+      if (attempt === 0) await new Promise(function (res) { setTimeout(res, 300); });
+    }
   }
-  return r.json();
+  throw lastErr;
 }
 async function sbInsert(table, row) {
   // Direct write with the anon key — the channel that demonstrably works
   // on the user's phone (reads already use it). RLS only allows inserting
   // rows with status 'pending', so nothing can go public without the admin.
-  const r = await fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + table, {
+  const r = await sbFetch(CONFIG.SUPABASE_URL + "/rest/v1/" + table, {
     method: "POST",
     headers: {
       "apikey": CONFIG.SUPABASE_ANON_KEY,
@@ -835,7 +870,7 @@ async function sbUpdate(table, row, params) {
   const qs = Object.keys(params).map(function (k) {
     return encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
   }).join("&");
-  const r = await fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + table + "?" + qs, {
+  const r = await sbFetch(CONFIG.SUPABASE_URL + "/rest/v1/" + table + "?" + qs, {
     method: "PATCH",
     headers: {
       "apikey": CONFIG.SUPABASE_ANON_KEY,
@@ -1327,23 +1362,39 @@ function getReadState() {
 function saveReadState(r) {
   try { store.set(READ_KEY, JSON.stringify(r || {})); } catch (e) {}
 }
-async function latestOtherMessage(appId) {
-  const mine = me().id;
+async function latestOtherMessages(appIds) {
+  // v73: ONE query for all rows instead of one GET per application —
+  // each GET costs ~0.7s, so 5 rows used to add ~3.5s before the dots
+  // appeared. Returns {appId: latest row from the other side | null}.
+  // The latest row being mine means I opened the chat to write it, so
+  // anything older was already seen then (same rule as v72).
+  const out = {};
+  appIds.forEach(function (id) { out[id] = null; });
+  if (!appIds.length) return out;
   if (MOCK) {
-    const list = MOCK_MESSAGES.filter(function (m) { return m.application_id === appId && m.sender_id !== mine; });
-    return list.length ? list[list.length - 1] : null;
+    const mine = me().id;
+    appIds.forEach(function (id) {
+      const list = MOCK_MESSAGES.filter(function (m) { return m.application_id === id && m.sender_id !== mine; });
+      out[id] = list.length ? list[list.length - 1] : null;
+    });
+    return out;
   }
   try {
-    const rows = await sbSelect("messages", { select: "id,sender_id,created_at", application_id: "eq." + appId, order: "created_at.desc", limit: 1 });
-    if (!rows || !rows.length) return null;
-    // The latest message is mine — I must have opened the chat to write
-    // it, so anything older was already seen then.
-    return rows[0].sender_id === mine ? null : rows[0];
-  } catch (e) { return null; }
+    const rows = await sbSelect("messages", { select: "id,application_id,sender_id,created_at", application_id: "in.(" + appIds.join(",") + ")", order: "created_at.desc", limit: 200 });
+    const mine = me().id;
+    const done = {};
+    (rows || []).forEach(function (m) {
+      if (done[m.application_id]) return; // rows are newest-first: first per app is its latest
+      done[m.application_id] = true;
+      if (m.sender_id !== mine) out[m.application_id] = m;
+    });
+  } catch (e) { /* unread dots stay off on a failed read — the list still shows */ }
+  return out;
 }
 async function loadUnread(apps, employerSide) {
   const read = getReadState();
   const out = {};
+  const needMsg = [];
   for (let i = 0; i < apps.length; i++) {
     const a = apps[i];
     const r = read[a.id] || {};
@@ -1354,11 +1405,16 @@ async function loadUnread(apps, employerSide) {
     } else if (r.status && a.status && r.status !== a.status && a.status !== "pending") {
       unread = true; // decided since I last looked
     }
-    if (!unread) {
-      const latest = await latestOtherMessage(a.id);
-      if (latest && (!r.msgId || latest.id > r.msgId)) unread = true;
-    }
     out[a.id] = unread;
+    if (!unread) needMsg.push(a.id);
+  }
+  if (needMsg.length) {
+    const latest = await latestOtherMessages(needMsg);
+    needMsg.forEach(function (id) {
+      const m = latest[id];
+      const r = read[id] || {};
+      if (m && (!r.msgId || m.id > r.msgId)) out[id] = true;
+    });
   }
   state.unread = out;
   return out;
@@ -1727,6 +1783,16 @@ async function loadChatMessages(appId) {
       .slice().sort(function (a, b) { return a.created_at.localeCompare(b.created_at); });
     return;
   }
+  // v73: a poll tick fetches only messages newer than the ones already
+  // shown (ids grow monotonically) instead of the whole thread — the
+  // full re-read every tick was the heaviest chat cost.
+  const list = state.chatMessages[appId];
+  if (list && list.length) {
+    const maxId = Math.max.apply(null, list.map(function (m) { return m.id || 0; }));
+    const rows = await sbSelect("messages", { select: "*", application_id: "eq." + appId, id: "gt." + maxId, order: "created_at.asc" }) || [];
+    if (rows.length) state.chatMessages[appId] = list.concat(rows);
+    return;
+  }
   state.chatMessages[appId] = await sbSelect("messages", { select: "*", application_id: "eq." + appId, order: "created_at.asc" }) || [];
 }
 function fmtTime(iso) {
@@ -1772,8 +1838,11 @@ function startChatPolling(appId) {
   state.chatTimer = setInterval(function () {
     if (state.view.name !== "chat" || state.view.applicationId !== appId) { stopChatPolling(); return; }
     loadChatMessages(appId).then(function () { refreshChatMessages(); applyChatLock(); markRead(appId); }).catch(function () {});
-    refreshChatApp(appId);
-  }, 5000);
+    // v73: the per-tick status re-read exists only for the one-message
+    // rule — it matters only while the freelancer waits on a pending
+    // decision. Employer side and decided chats skip the extra GET.
+    if (state.view.app && me().id === state.view.app.freelancer_id && state.view.app.status === "pending") refreshChatApp(appId);
+  }, 3000);
 }
 /* v56: one-message rule — a freelancer may send only the application
    (their first message) until the employer answers it, either with a
@@ -1836,22 +1905,24 @@ async function openChat(appId, back) {
     } catch (e) {}
   }
   if (!app) { showToast("درخواست پیدا نشد"); return; }
+  // v73: the job resolves together with the thread below (Promise.all) —
+  // no separate round trip before the chat opens. findJob caches it.
   let job = state.jobById[app.job_id] || null;
-  if (!job) {
-    if (MOCK) job = MOCK_JOBS.find(function (j) { return j.id === app.job_id; }) || null;
-    else {
-      try {
-        const rows = await sbSelect("jobs", { select: "*", id: "eq." + app.job_id });
-        job = rows && rows[0];
-        if (job) state.jobById[job.id] = job;
-      } catch (e) {}
-    }
-  }
+  if (!job && MOCK) job = MOCK_JOBS.find(function (j) { return j.id === app.job_id; }) || null;
   state.view = { name: "chat", applicationId: app.id, back: back, app: app, job: job };
   state.chatImage = null;
   state.loading = true;
   render();
-  try { await loadChatMessages(app.id); state.loading = false; } catch (e) { state.loading = false; state.error = "خطا در بارگذاری پیام‌ها: " + e.message; }
+  // v73: the job and the thread load in parallel instead of one after
+  // the other — opening a chat used to cost 2–3 sequential round trips.
+  try {
+    await Promise.all([
+      loadChatMessages(app.id),
+      job ? Promise.resolve(job) : findJob(app.job_id).then(function (j) { job = j; })
+    ]);
+    state.view.job = job;
+    state.loading = false;
+  } catch (e) { state.view.job = job; state.loading = false; state.error = "خطا در بارگذاری پیام‌ها: " + e.message; }
   render();
   markRead(app.id); // v72: opening the chat marks its messages as seen
   startChatPolling(app.id);
@@ -2261,22 +2332,27 @@ async function switchTab(tab) {
   } else if (tab === "my-apps") {
     state.view = { name: "my-apps" };
     state.unread = {}; // v72: stale dots cleared until the fresh read lands
-    state.loading = true; render();
+    // v73: paint the cached list instantly, then refresh underneath —
+    // the tab used to sit on a spinner for the whole load (~2–5s).
+    const cachedApps = myAppsList().length > 0;
+    state.loading = !cachedApps; render();
     try {
       // v48: employers see the applications received on their ads;
       // freelancers see their own applications.
       if (getRole() === "employer") { await loadReceivedApplications(); } else { await loadMyApplications(); }
       state.loading = false;
-    } catch (e) { state.loading = false; state.error = "خطا در بارگذاری: " + e.message; }
+    } catch (e) { state.loading = false; if (!cachedApps) state.error = "خطا در بارگذاری: " + e.message; }
     render();
     refreshUnread().catch(function () {}); // v72: paint unread dots after the list loads
   } else if (tab === "my-jobs") {
     state.view = { name: "my-jobs" };
-    state.loading = true; render();
+    // v73: same cached-first paint as my-apps.
+    const cachedJobs = state.myJobs.length > 0;
+    state.loading = !cachedJobs; render();
     try {
       await loadMyJobsAndApps();
       state.loading = false;
-    } catch (e) { state.loading = false; state.error = "خطا در بارگذاری: " + e.message; }
+    } catch (e) { state.loading = false; if (!cachedJobs) state.error = "خطا در بارگذاری: " + e.message; }
     render();
   } else if (tab === "profile") {
     state.view = { name: "profile" };
@@ -2305,7 +2381,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v72 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v73 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2340,7 +2416,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
