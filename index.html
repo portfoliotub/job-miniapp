@@ -424,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v75</span>
+<span class="app-version" id="app-version">v76</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -607,7 +607,7 @@ const state = {
   chatMessages: {}, // applicationId -> [messages]
   chatTimer: null, // polling interval while a chat is open
   unread: {}, // v72: applicationId -> has an unseen message/decision
-  listTimer: null, // v72: 20s refresh of the my-apps list + unread badge
+  listTimer: null, // v72: 10s refresh of the my-apps list + unread badge (v76: was 20s)
   chatImage: null, // pending photo (data URL) attached to the next message
   jobById: {},
   loading: false,
@@ -1391,7 +1391,7 @@ async function latestOtherMessages(appIds) {
       done[m.application_id] = true;
       if (m.sender_id !== mine) out[m.application_id] = m;
     });
-  } catch (e) { /* unread dots stay off on a failed read — the list still shows */ }
+  } catch (e) { /* v76: signal the failure (null) so the caller keeps the last-known dots instead of clearing them — the list still shows */ return null; }
   return out;
 }
 async function loadUnread(apps, employerSide) {
@@ -1413,11 +1413,17 @@ async function loadUnread(apps, employerSide) {
   }
   if (needMsg.length) {
     const latest = await latestOtherMessages(needMsg);
-    needMsg.forEach(function (id) {
-      const m = latest[id];
-      const r = read[id] || {};
-      if (m && (!r.msgId || m.id > r.msgId)) out[id] = true;
-    });
+    if (latest) {
+      needMsg.forEach(function (id) {
+        const m = latest[id];
+        const r = read[id] || {};
+        if (m && (!r.msgId || m.id > r.msgId)) out[id] = true;
+      });
+    } else {
+      // v76: the batched messages read failed — keep the last-known
+      // dots instead of clearing them until a read succeeds.
+      needMsg.forEach(function (id) { if (state.unread[id]) out[id] = true; });
+    }
   }
   state.unread = out;
   return out;
@@ -1507,7 +1513,7 @@ async function refreshMyApps() {
 }
 function startListPolling() {
   if (state.listTimer) return;
-  state.listTimer = setInterval(function () { refreshMyApps().catch(function () {}); }, 20000);
+  state.listTimer = setInterval(function () { refreshMyApps().catch(function () {}); }, 10000);
 }
 
 function renderMyApplications() {
@@ -2035,8 +2041,12 @@ function renderChat() {
     (app.message ? '<p class="desc">' + esc(app.message) + "</p>" : "") +
     (app.samples ? sampleLinks(app.samples) : "") +
     "</div>";
+  // v76: a re-opened chat already has its thread cached — show it at
+  // once instead of hiding it behind the spinner until the refresh
+  // lands (on a slow connection that spinner was the whole complaint).
+  const cachedList = state.chatMessages[state.view.applicationId] || [];
   html += '<div class="chat-msgs" id="chat-msgs">' +
-    (state.loading ? '<div class="loading">در حال بارگذاری…</div>' : chatMessagesHtml()) +
+    (state.loading && !cachedList.length ? '<div class="loading">در حال بارگذاری…</div>' : chatMessagesHtml()) +
     "</div></div>" +
     '<div class="chat-composer-wrap">' +
     '<div class="chat-photo-preview" id="chat-photo-preview" hidden><img id="chat-photo-thumb" alt=""><button type="button" id="chat-photo-remove">حذف ✕</button></div>' +
@@ -2354,7 +2364,10 @@ async function switchTab(tab) {
     render();
   } else if (tab === "my-apps") {
     state.view = { name: "my-apps" };
-    state.unread = {}; // v72: stale dots cleared until the fresh read lands
+    // v76: the last-known dots stay until the fresh read below lands —
+    // wiping them here left the tab dotless whenever that read failed
+    // on a slow/flaky connection (the read overwrites state.unread
+    // when it succeeds, and a failed messages read keeps the old dots).
     // v73: paint the cached list instantly, then refresh underneath —
     // the tab used to sit on a spinner for the whole load (~2–5s).
     const cachedApps = myAppsList().length > 0;
@@ -2404,7 +2417,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v75 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v76 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2431,9 +2444,9 @@ async function switchTab(tab) {
   if (!getRole()) { state.view = { name: "welcome" }; render(); }
   else if (dj) { preload.then(function () { openJobDetail(dj); }); }
   else switchTab(homeTab());
-  // v72: the unread badge stays live while the app is open (20s
-  // refresh of the my-apps list) and is computed once at boot so the
-  // tab count is right even before the tab is visited.
+  // v72: the unread badge stays live while the app is open (10s
+  // refresh of the my-apps list, v76: was 20s) and is computed once at
+  // boot so the tab count is right even before the tab is visited.
   startListPolling();
   refreshMyApps().catch(function () {});
 })();
