@@ -424,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v77</span>
+<span class="app-version" id="app-version">v78</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1375,8 +1375,10 @@ async function latestOtherMessages(appIds) {
   // v73: ONE query for all rows instead of one GET per application —
   // each GET costs ~0.7s, so 5 rows used to add ~3.5s before the dots
   // appeared. Returns {appId: latest row from the other side | null}.
-  // The latest row being mine means I opened the chat to write it, so
-  // anything older was already seen then (same rule as v72).
+  // v78: the newest row is often mine (I just replied) — that must not
+  // hide the other side's latest message sitting below it, or its dot
+  // never appears until they write again. Skip my own rows and take
+  // the newest row from the other side.
   const out = {};
   appIds.forEach(function (id) { out[id] = null; });
   if (!appIds.length) return out;
@@ -1391,11 +1393,13 @@ async function latestOtherMessages(appIds) {
   try {
     const rows = await sbSelect("messages", { select: "id,application_id,sender_id,created_at", application_id: "in.(" + appIds.join(",") + ")", order: "created_at.desc", limit: 200 });
     const mine = me().id;
-    const done = {};
+    // v78: take the highest id from the other side per app — ids grow
+    // monotonically, so this is the latest even if the rows ever come
+    // back in a different order than the requested created_at desc.
     (rows || []).forEach(function (m) {
-      if (done[m.application_id]) return; // rows are newest-first: first per app is its latest
-      done[m.application_id] = true;
-      if (m.sender_id !== mine) out[m.application_id] = m;
+      if (m.sender_id === mine) return; // v78: my own rows never count (see above)
+      var cur = out[m.application_id];
+      if (!cur || (m.id || 0) > (cur.id || 0)) out[m.application_id] = m;
     });
   } catch (e) { /* v76: signal the failure (null) so the caller keeps the last-known dots instead of clearing them — the list still shows */ return null; }
   return out;
@@ -1892,6 +1896,7 @@ function stopChatRealtime() {
   state.rtAppId = null;
   state.rtStatus = "off";
   state.rtDebug = null;
+  paintRtStatus();
 }
 function rtOnInsert(record) {
   // One INSERT event from Realtime — the same row shape the REST read
@@ -1912,6 +1917,22 @@ function rtOnInsert(record) {
   }
   return true;
 }
+/* v78: tiny live-status line in the chat — the user could never tell
+   whether Realtime was on or silently dead, so the chat itself says so.
+   Painted in place, never via render() — a full render would close
+   the socket. */
+function rtStatusText() {
+  if (state.rtStatus === "on") return "زنده ✓ — پیام‌ها همین لحظه می‌رسند";
+  if (state.rtStatus === "connecting") return "در حال اتصال به چت زنده…";
+  if (state.rtStatus === "unavailable") return "چت زنده وصل نشد — پیام‌ها هر ۳ ثانیه چک می‌شوند";
+  return "";
+}
+function paintRtStatus() {
+  var el = document.getElementById("rt-status");
+  if (!el) return;
+  el.textContent = rtStatusText();
+  el.hidden = !rtStatusText();
+}
 function startChatRealtime(appId) {
   stopChatRealtime();
   state.rtAppId = appId;
@@ -1919,16 +1940,21 @@ function startChatRealtime(appId) {
   // subscription this chat would open — topic + row filter.
   state.rtDebug = { appId: appId, topic: RT_TOPIC, filter: "application_id=eq." + appId };
   if (MOCK || typeof WebSocket === "undefined") { state.rtStatus = "off"; return; }
-  var attempts = 0;
   function connect() {
     if (state.view.name !== "chat" || state.view.applicationId !== appId) return;
     state.rtStatus = "connecting";
+    paintRtStatus();
     var ws;
-    try { ws = new WebSocket(rtWsUrl()); } catch (e) { state.rtStatus = "unavailable"; return; }
+    try { ws = new WebSocket(rtWsUrl()); } catch (e) { state.rtStatus = "unavailable"; paintRtStatus(); return; }
     state.rtSocket = ws;
     var ref = 1;
     var joined = false;
+    // v78: a socket stuck in CONNECTING (flaky network — no open, no
+    // close) used to hang forever with no retry. Close it after 10s so
+    // dead() fires and the next attempt starts.
+    var openTimer = setTimeout(function () { try { ws.close(); } catch (e) {} }, 10000);
     ws.onopen = function () {
+      clearTimeout(openTimer);
       try {
         ws.send(JSON.stringify({ topic: RT_TOPIC, event: "phx_join", payload: { config: { broadcast: { self: false }, presence: { key: "" }, postgres_changes: [{ event: "INSERT", schema: "public", table: "messages", filter: "application_id=eq." + appId }] } }, ref: String(ref++) }));
       } catch (e) {}
@@ -1941,6 +1967,7 @@ function startChatRealtime(appId) {
           if (!joined) {
             joined = true;
             state.rtStatus = "on";
+            paintRtStatus();
             state.rtTimer = setInterval(function () {
               try { ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: String(ref++) })); } catch (e) {}
             }, 25000);
@@ -1955,15 +1982,21 @@ function startChatRealtime(appId) {
       }
     };
     function dead() {
+      clearTimeout(openTimer);
       if (state.rtSocket !== ws) return;
       state.rtSocket = null;
       if (state.rtTimer) { clearInterval(state.rtTimer); state.rtTimer = null; }
-      if (state.view.name === "chat" && state.view.applicationId === appId && attempts < 3) {
-        attempts++;
+      // v78: keep retrying for as long as the chat stays open. On a
+      // flaky connection the old 3-attempt cap gave up within ~15s and
+      // live updates silently died for the rest of the chat; the 3s
+      // REST poll keeps working underneath as the fallback.
+      if (state.view.name === "chat" && state.view.applicationId === appId) {
         state.rtStatus = "connecting";
+        paintRtStatus();
         state.rtRetry = setTimeout(connect, 5000);
       } else {
         state.rtStatus = "unavailable";
+        paintRtStatus();
       }
     }
     ws.onclose = dead;
@@ -2154,6 +2187,7 @@ function renderChat() {
   html += '<div class="chat-msgs" id="chat-msgs">' +
     (state.loading && !cachedList.length ? '<div class="loading">در حال بارگذاری…</div>' : chatMessagesHtml()) +
     "</div></div>" +
+    '<div class="muted" id="rt-status" hidden style="text-align:center;font-size:11px;padding:2px 0 6px;"></div>' +
     '<div class="chat-composer-wrap">' +
     '<div class="chat-photo-preview" id="chat-photo-preview" hidden><img id="chat-photo-thumb" alt=""><button type="button" id="chat-photo-remove">حذف ✕</button></div>' +
     '<div class="chat-lock-note" id="chat-lock-note" hidden>منتظر جواب کارفرما هستید — تا وقتی جواب نداده نمی‌توانید پیام بفرستید.</div>' +
@@ -2164,6 +2198,7 @@ function renderChat() {
     '<button class="chat-send" id="chat-send" type="button">ارسال</button>' +
     "</div></div>";
   viewEl().innerHTML = html;
+  paintRtStatus();
   viewEl().querySelector("[data-back]").addEventListener("click", function () {
     stopChatPolling();
     const back = state.view.back;
@@ -2524,7 +2559,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v77 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v78 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
