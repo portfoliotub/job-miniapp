@@ -78,6 +78,9 @@
   }
   /* v26: real Telegram photo laid over the letter avatar (profile only). */
   .avatar-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  /* v90: empty profile-photo slot in the form — no letter until the user
+     picks a photo (the letter stays the fallback in lists/chat). */
+  .avatar-empty { background: transparent; border: 2px dashed var(--hint); color: var(--hint); font-size: 26px; }
   /* v27: freelancer profile banner, YouTube channel-art style. v28: the
      display ratio is YouTube's channel-art strip (2560×423), not 16:9 —
      16:9 was too tall; the upload size stays 2560×1440. v32: the banner's
@@ -429,7 +432,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v89</span>
+<span class="app-version" id="app-version">v90</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -558,6 +561,43 @@ function setRole(r) {
   store.set(ROLE_KEY, r);
   cloudSet(ROLE_KEY, r); // v80: durable copy in Telegram CloudStorage
   buildTabs();
+  recordOnboarding(r); // v90: best-effort, never blocks the role pick
+}
+/* v90: onboarding — every new user (no role yet) is asked once how they
+   found the bot, BEFORE the role cards. The answer is stored locally
+   (yt_source + yt_onboarded) so the question never repeats on this
+   device, and recorded in Supabase with the role they then pick
+   (onboarding_responses) — one row per role pick. Existing users (role
+   already set) never see the question. */
+const ONBOARD_KEY = "yt_onboarded";
+const SOURCE_KEY = "yt_source";
+const SOURCES = ["تلگرام", "یوتیوب", "اینستاگرام", "دوست یا آشنا", "جستجو در گوگل", "سایر"];
+function getOnboarded() { return store.get(ONBOARD_KEY) === "1"; }
+function recordOnboarding(role) {
+  // Best-effort: the flow must never block on this write (same rule as
+  // notify_job_posted). No-op in mock mode and when there is no answer
+  // to record (e.g. a pre-v90 user switching roles).
+  if (MOCK) return;
+  const src = store.get(SOURCE_KEY);
+  if (!src) return;
+  sbInsert("onboarding_responses", { telegram_id: me().id, source: src, role: role }).then(function () {}, function () {});
+}
+function renderOnboarding() {
+  viewEl().innerHTML = '<div class="welcome">' +
+    '<div class="welcome-hero"><div class="welcome-title">قبل از شروع، یه سوال</div></div>' +
+    '<div class="welcome-q">از چه طریقی با ما آشنا شدی؟</div>' +
+    SOURCES.map(function (s) {
+      return '<button type="button" class="role-card" data-source="' + esc(s) + '"><span><span class="role-title">' + esc(s) + '</span></span></button>';
+    }).join("") +
+    '<div class="welcome-note">جوابت فقط برای بهتر شدن ماست.</div>' +
+    "</div>";
+  viewEl().querySelectorAll("[data-source]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      store.set(SOURCE_KEY, el.getAttribute("data-source"));
+      store.set(ONBOARD_KEY, "1");
+      showWelcome();
+    });
+  });
 }
 /* v80: background reconciliation — if the cloud holds a different role
    than localStorage (local was wiped, or the role changed on another
@@ -2921,7 +2961,7 @@ function renderProfile() {
   viewEl().innerHTML = "<h2>پروفایل فریلنسری</h2>" +
     '<div class="card profile-card">' +
     bannerHtml(p) +
-    '<div class="card-head"><div class="avatar-wrap">' + photoAvatarHtml(u.name, p.photo || "") +
+    '<div class="card-head"><div class="avatar-wrap">' + (p.photo ? photoAvatarHtml(u.name, p.photo) : '<div class="avatar avatar-empty" aria-label="بدون عکس">+</div>') +
     '<button class="avatar-edit" id="profile-photo-edit" type="button" aria-label="ویرایش عکس پروفایل">' + ICONS.edit + '</button></div>' +
     '<input type="file" id="profile-photo-file" accept="image/*" hidden>' +
     '<div><div class="card-title">' + esc(u.name) + "</div>" +
@@ -2929,13 +2969,13 @@ function renderProfile() {
     "</div>" +
     '<form id="profile-form">' +
     '<label>مهارت‌ها</label>' +
-    '<input id="pf-skills" type="text" placeholder="مثلا: ادیت چالش، تامنیل، موشن" value="' + esc(p.skills || "") + '">' +
+    '<input id="pf-skills" type="text" value="' + esc(p.skills || "") + '">' +
     '<label>لینک پورتفولیو / نمونه‌کار</label>' +
-    '<input id="pf-portfolio" type="text" placeholder="https://portfoliotub.github.io" value="' + esc(p.portfolio || "") + '">' +
+    '<input id="pf-portfolio" type="text" value="' + esc(p.portfolio || "") + '">' +
     '<label>کشور</label>' +
     pickerButton("pf-country", p.country || "", "انتخاب کنید") +
     '<label>درباره من</label>' +
-    '<textarea id="pf-bio" placeholder="چند جمله درباره تجربه و سبک کاری…">' + esc(p.bio || "") + "</textarea>" +
+    '<textarea id="pf-bio">' + esc(p.bio || "") + "</textarea>" +
     '<div class="row-btns"><button class="btn" type="submit">ذخیره پروفایل</button>' +
     '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
     "</form>";
@@ -3040,11 +3080,13 @@ function renderTabs() {
 function render() {
   stopChatPolling();
   stopChatRealtime();
-  // The welcome screen has no tab bar (choose a role first); neither does
-  // the chat page (it has its own back button + fixed composer).
-  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
+  // The welcome and onboarding screens have no tab bar (choose first);
+  // neither does the chat page (it has its own back button + fixed
+  // composer).
+  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "onboarding" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
   renderTabs();
   switch (state.view.name) {
+    case "onboarding": renderOnboarding(); break;
     case "welcome": renderWelcome(); break;
     case "job-detail": openJobDetail(state.view.jobId); break;
     case "post": renderPost(); break;
@@ -3134,7 +3176,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v89 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v90 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -3160,7 +3202,11 @@ async function switchTab(tab) {
   const dj = deepJobId();
   // v80: land in the role's home (or the deep-linked ad, or welcome).
   function finishBoot() {
-    if (!getRole()) { state.view = { name: "welcome" }; render(); }
+    // v90: a new user (no role yet) answers the onboarding question
+    // first; an existing user (role set, or restored from the cloud
+    // above) never sees it.
+    if (!getRole() && !getOnboarded()) { state.view = { name: "onboarding" }; render(); }
+    else if (!getRole()) { state.view = { name: "welcome" }; render(); }
     else if (dj) { preload.then(function () { openJobDetail(dj); }); }
     else switchTab(homeTab());
   }
