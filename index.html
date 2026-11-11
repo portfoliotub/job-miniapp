@@ -424,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v78</span>
+<span class="app-version" id="app-version">v79</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -577,7 +577,7 @@ function saveProfile(p) {
 
 /* ================= mock data (preview only) ================= */
 const MOCK_JOBS = [
-  { id: 1, employer_id: 222, employer_name: "آرش", title: "ادیتور ویدیوی چالش برای کانال ۲۰۰هزاری", category: "ادیت ویدیو", budget: "$150", deadline: "2026-11-10", work_type: "دورکاری", description: "ویدیوی ۱۵ دقیقه‌ای چالش با ریتم تند، زوم و افکت‌های خنده‌دار. فایل خام و رفرنس می‌فرستم؛ تحویل ۳ روزه.", status: "open", created_at: "2026-11-03T08:00:00Z" },
+  { id: 1, employer_id: 222, employer_name: "آرش", employer_photo: "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='64'%20height='64'%3E%3Crect%20width='64'%20height='64'%20fill='%235bc76c'/%3E%3C/svg%3E", title: "ادیتور ویدیوی چالش برای کانال ۲۰۰هزاری", category: "ادیت ویدیو", budget: "$150", deadline: "2026-11-10", work_type: "دورکاری", description: "ویدیوی ۱۵ دقیقه‌ای چالش با ریتم تند، زوم و افکت‌های خنده‌دار. فایل خام و رفرنس می‌فرستم؛ تحویل ۳ روزه.", status: "open", created_at: "2026-11-03T08:00:00Z" },
   { id: 2, employer_id: 333, employer_name: "سارا", title: "طراح تامنیل برای کانال گیمینگ", category: "تامنیل", budget: "$40", deadline: "2026-11-08", work_type: "حضوری", location: "تهران", description: "تامنیل برای ویدیوی ماینکرفت؛ سبک مینیمال و سینمایی، حداکثر ۳ المان.", status: "open", created_at: "2026-11-02T15:30:00Z" },
   { id: 3, employer_id: 111111, employer_name: "کالی", title: "اسکریپت‌نویس برای ویدیوی مستند کوتاه", category: "اسکریپت", budget: "$80", deadline: "2026-11-15", work_type: "دورکاری", description: "اسکریپت ۸ دقیقه‌ای درباره تاریخ زیپ؛ لحن داستانی و جذاب.", status: "open", created_at: "2026-11-02T10:00:00Z" },
   { id: 4, employer_id: 444, employer_name: "مهدی", title: "ادیتور شورت ویدیو (عمودی)", category: "ادیت ویدیو", budget: "$25", deadline: "2026-11-07", work_type: "دورکاری", description: "هر هفته ۳ شورت ۳۰ ثانیه‌ای از ویدیوی بلند؛ کپشن و ساندافکت.", status: "open", created_at: "2026-11-01T18:20:00Z" },
@@ -613,6 +613,7 @@ const state = {
   rtStatus: "off", // v77: off | connecting | on | unavailable
   rtDebug: null, // v77: last Realtime join attempt {appId, topic, filter} (test hook)
   unread: {}, // v72: applicationId -> has an unseen message/decision
+  latestMsg: {}, // v79: applicationId -> latest thread message (any side), for the freelancer row preview
   listTimer: null, // v72: 10s refresh of the my-apps list + unread badge (v76: was 20s)
   chatImage: null, // pending photo (data URL) attached to the next message
   jobById: {},
@@ -928,7 +929,7 @@ async function loadMyApplications() {
     // the answered-request rows can show the employer's name.
     state.myApplications.forEach(function (a) {
       const j = MOCK_JOBS.find(function (x) { return x.id === a.job_id; });
-      if (j) { a.job_title = j.title; a.job_employer = j.employer_name; }
+      if (j) { a.job_title = j.title; a.job_employer = j.employer_name; a.job_employer_photo = j.employer_photo || ""; }
     });
     return;
   }
@@ -937,12 +938,13 @@ async function loadMyApplications() {
   const ids = state.myApplications.map(function (a) { return a.job_id; });
   if (ids.length) {
     try {
-      const rows = await sbSelect("jobs", { select: "id,title,employer_name", id: "in.(" + ids.join(",") + ")" });
+      const rows = await sbSelect("jobs", { select: "id,title,employer_name,employer_photo", id: "in.(" + ids.join(",") + ")" });
       const map = {};
       rows.forEach(function (j) { map[j.id] = j; });
       state.myApplications.forEach(function (a) {
         a.job_title = map[a.job_id] ? map[a.job_id].title : ("آگهی #" + a.job_id);
         a.job_employer = map[a.job_id] ? map[a.job_id].employer_name : "";
+        a.job_employer_photo = map[a.job_id] ? (map[a.job_id].employer_photo || "") : "";
       });
     } catch (e) {}
   }
@@ -1089,7 +1091,7 @@ async function openJobDetail(jobId) {
   const mine = job.employer_id === me().id;
   const alreadyApplied = state.myApplications.some(function (a) { return a.job_id === jobId; });
   let html = '<button class="back" data-back>› بازگشت</button>' +
-    '<div class="card"><div class="card-head">' + avatarHtml(job.employer_name || "کارفرما") +
+    '<div class="card"><div class="card-head">' + photoAvatarHtml(job.employer_name || "کارفرما", job.employer_photo || "") +
     '<div><div class="card-title">' + esc(job.title) + '</div><div class="meta">' + esc(job.employer_name || "کارفرما") + " · " + fmtDate(job.created_at) + "</div></div></div>" +
     '<div class="meta-row"><span class="chip">' + esc(job.category) + "</span>" +
     (job.work_type ? '<span class="chip">' + esc(job.work_type) + (job.location ? " — " + esc(job.location) : "") + "</span>" : "") +
@@ -1296,7 +1298,7 @@ async function submitPostJob(ev) {
     const update = {
       title: payload.title, category: payload.category, budget: payload.budget,
       deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
-      description: payload.description
+      description: payload.description, employer_photo: me().photo
     };
     if (wasRejected) update.status = "pending";
     if (MOCK) {
@@ -1331,7 +1333,7 @@ async function submitPostJob(ev) {
   // no-op — e.g. the app was opened from the menu button instead of /start.
   try {
     const row = await sbInsert("jobs", {
-      employer_id: me().id, employer_name: me().name,
+      employer_id: me().id, employer_name: me().name, employer_photo: me().photo,
       title: payload.title, category: payload.category, budget: payload.budget,
       deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
       description: payload.description, status: "pending"
@@ -1374,35 +1376,43 @@ function saveReadState(r) {
 async function latestOtherMessages(appIds) {
   // v73: ONE query for all rows instead of one GET per application —
   // each GET costs ~0.7s, so 5 rows used to add ~3.5s before the dots
-  // appeared. Returns {appId: latest row from the other side | null}.
+  // appeared. Returns {other: {appId: latest row from the other side |
+  // null}, any: {appId: latest row from either side | null}} — v79: the
+  // freelancer row shows the latest thread message as its preview, so
+  // the "any" map carries the message bodies too.
   // v78: the newest row is often mine (I just replied) — that must not
   // hide the other side's latest message sitting below it, or its dot
   // never appears until they write again. Skip my own rows and take
   // the newest row from the other side.
   const out = {};
-  appIds.forEach(function (id) { out[id] = null; });
-  if (!appIds.length) return out;
+  const any = {};
+  appIds.forEach(function (id) { out[id] = null; any[id] = null; });
+  if (!appIds.length) return { other: out, any: any };
   if (MOCK) {
     const mine = me().id;
     appIds.forEach(function (id) {
-      const list = MOCK_MESSAGES.filter(function (m) { return m.application_id === id && m.sender_id !== mine; });
-      out[id] = list.length ? list[list.length - 1] : null;
+      const list = MOCK_MESSAGES.filter(function (m) { return m.application_id === id; });
+      const other = list.filter(function (m) { return m.sender_id !== mine; });
+      out[id] = other.length ? other[other.length - 1] : null;
+      any[id] = list.length ? list[list.length - 1] : null;
     });
-    return out;
+    return { other: out, any: any };
   }
   try {
-    const rows = await sbSelect("messages", { select: "id,application_id,sender_id,created_at", application_id: "in.(" + appIds.join(",") + ")", order: "created_at.desc", limit: 200 });
+    const rows = await sbSelect("messages", { select: "id,application_id,sender_id,body,image,created_at", application_id: "in.(" + appIds.join(",") + ")", order: "created_at.desc", limit: 200 });
     const mine = me().id;
     // v78: take the highest id from the other side per app — ids grow
     // monotonically, so this is the latest even if the rows ever come
     // back in a different order than the requested created_at desc.
     (rows || []).forEach(function (m) {
+      var curAny = any[m.application_id];
+      if (!curAny || (m.id || 0) > (curAny.id || 0)) any[m.application_id] = m;
       if (m.sender_id === mine) return; // v78: my own rows never count (see above)
       var cur = out[m.application_id];
       if (!cur || (m.id || 0) > (cur.id || 0)) out[m.application_id] = m;
     });
   } catch (e) { /* v76: signal the failure (null) so the caller keeps the last-known dots instead of clearing them — the list still shows */ return null; }
-  return out;
+  return { other: out, any: any };
 }
 async function loadUnread(apps, employerSide) {
   const read = getReadState();
@@ -1421,19 +1431,22 @@ async function loadUnread(apps, employerSide) {
     out[a.id] = unread;
     if (!unread) needMsg.push(a.id);
   }
-  if (needMsg.length) {
-    const latest = await latestOtherMessages(needMsg);
-    if (latest) {
-      needMsg.forEach(function (id) {
-        const m = latest[id];
-        const r = read[id] || {};
-        if (m && (!r.msgId || m.id > r.msgId)) out[id] = true;
-      });
-    } else {
-      // v76: the batched messages read failed — keep the last-known
-      // dots instead of clearing them until a read succeeds.
-      needMsg.forEach(function (id) { if (state.unread[id]) out[id] = true; });
-    }
+  // v79: fetch the thread preview for EVERY row, not just the ones that
+  // still need a dot — the freelancer row shows the latest message.
+  // The dot check below still only runs for needMsg rows.
+  const latest = await latestOtherMessages(apps.map(function (a) { return a.id; }));
+  if (latest) {
+    state.latestMsg = latest.any; // v79: latest thread message per app (any side)
+    needMsg.forEach(function (id) {
+      const m = latest.other[id];
+      const r = read[id] || {};
+      if (m && (!r.msgId || m.id > r.msgId)) out[id] = true;
+    });
+  } else {
+    // v76: the batched messages read failed — keep the last-known
+    // dots instead of clearing them until a read succeeds.
+    needMsg.forEach(function (id) { if (state.unread[id]) out[id] = true; });
+    // v79: same for previews — state.latestMsg keeps its last value.
   }
   state.unread = out;
   return out;
@@ -1479,6 +1492,15 @@ function paintUnread() {
     } else if (!unread && dot) {
       dot.remove();
     }
+  });
+  // v79: paint the freelancer row preview text in place too — the list
+  // paints before the messages read lands, and a full re-render here
+  // would lose scroll position.
+  document.querySelectorAll("[data-app-card]").forEach(function (el) {
+    const id = parseInt(el.getAttribute("data-app-card"), 10);
+    const p = el.querySelector(".recv-msg");
+    const app = (state.myApplications || []).find(function (a) { return a.id === id; });
+    if (p && app) p.textContent = myAppPreviewText(app);
   });
   syncUnreadBadges();
 }
@@ -1526,6 +1548,21 @@ function startListPolling() {
   state.listTimer = setInterval(function () { refreshMyApps().catch(function () {}); }, 10000);
 }
 
+function myAppPreviewText(a) {
+  // v79: the freelancer row is a chat-list row — show the latest thread
+  // message (first line; «📷 عکس» for a photo-only message) when the
+  // thread has one. Otherwise the employer's decision status — that is
+  // what the row showed before, and it is still the right text when
+  // nobody has written in the chat yet.
+  const m = state.latestMsg && state.latestMsg[a.id];
+  if (m) {
+    const t = m.body ? String(m.body).split("\n")[0] : (m.image ? "📷 عکس" : "");
+    if (t) return t;
+  }
+  return a.status === "accepted" ? "درخواست شما قبول شد"
+    : a.status === "rejected" ? "درخواست شما رد شد"
+    : "هنوز جواب نداده است";
+}
 function renderMyApplications() {
   let html = "<h2>درخواست‌های من</h2>";
   if (state.loading) return viewEl().innerHTML = html + '<div class="loading">در حال بارگذاری…</div>';
@@ -1585,15 +1622,18 @@ function renderMyApplications() {
       // «رد شد»; not answered yet: «هنوز جواب نداده است». No badge, no
       // price/date, no job title, and the big «چت با کارفرما» button is
       // gone entirely — tapping the row opens the chat.
+      // v79: the "answer" is the latest thread message when the employer
+      // has written in the chat (myAppPreviewText) — the status text
+      // alone claimed «هنوز جواب نداده است» even after the employer
+      // replied «سلام» in the chat. The avatar is the employer's real
+      // photo (job.employer_photo) when one is stored, letter otherwise.
       const job = state.jobById[a.job_id];
       const empName = a.job_employer || (job && job.employer_name) || "کارفرما";
-      const answer = a.status === "accepted" ? "درخواست شما قبول شد"
-        : a.status === "rejected" ? "درخواست شما رد شد"
-        : "هنوز جواب نداده است";
+      const empPhoto = a.job_employer_photo || (job && job.employer_photo) || "";
       return '<div class="card clickable recv-card" data-app-card="' + a.id + '">' +
         (state.unread[a.id] ? '<span class="unread-dot"></span>' : "") +
-        '<div class="card-head">' + avatarHtml(empName) + '<div class="card-title">' + esc(empName) + "</div></div>" +
-        '<p class="desc recv-msg">' + esc(answer) + "</p></div>";
+        '<div class="card-head">' + photoAvatarHtml(empName, empPhoto) + '<div class="card-title">' + esc(empName) + "</div></div>" +
+        '<p class="desc recv-msg">' + esc(myAppPreviewText(a)) + "</p></div>";
     }).join("");
   }
   // v24: no role switch here — it lives only in the freelancer profile.
@@ -1681,7 +1721,7 @@ function renderJobApplications() {
   // details — before v34 it showed only the title and the applications,
   // and the user reported "nothing opens" when tapping his ad.
   if (job) {
-    html += '<div class="card job-detail-card"><div class="card-head">' + avatarHtml(job.employer_name || "کارفرما") +
+    html += '<div class="card job-detail-card"><div class="card-head">' + photoAvatarHtml(job.employer_name || "کارفرما", job.employer_photo || "") +
       '<div><div class="card-title">' + esc(job.title) + '</div><div class="meta">' + esc(job.employer_name || "کارفرما") + " · " + fmtDate(job.created_at) + "</div></div></div>" +
       '<div class="meta-row">' +
       (job.category ? '<span class="chip">' + esc(job.category) + "</span>" : "") +
@@ -2559,7 +2599,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v78 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v79 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
