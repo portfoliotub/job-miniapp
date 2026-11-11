@@ -429,7 +429,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v86</span>
+<span class="app-version" id="app-version">v87</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -659,6 +659,7 @@ const state = {
   rtDebug: null, // v77: last Realtime join attempt {appId, topic, filter} (test hook)
   unread: {}, // v72: applicationId -> has an unseen message/decision
   latestMsg: {}, // v84: applicationId -> latest RECEIVED message (other side), for the freelancer row preview — never my own message
+  notifiedMsg: {}, // v87: applicationId -> last message id a "new message" toast was shown for (in-memory; the toast fires once per message)
   listTimer: null, // v72: 10s refresh of the my-apps list + unread badge (v76: was 20s)
   chatImage: null, // pending photo (data URL) attached to the next message
   jobById: {},
@@ -1499,7 +1500,12 @@ async function latestOtherMessages(appIds) {
     return { other: out };
   }
   try {
-    const rows = await sbSelect("messages", { select: "id,application_id,sender_id,body,image,created_at", application_id: "in.(" + appIds.join(",") + ")", order: "created_at.desc", limit: 200 });
+    // v87: NO image column — the list only needs id/sender/body to
+    // light the dot and paint the preview; the photo bytes (message 3
+    // carries a ~130 KB base64 image) made this read heavy for nothing.
+    // A message with an empty body is a photo message (see
+    // myAppPreviewText), so dropping the column loses no information.
+    const rows = await sbSelect("messages", { select: "id,application_id,sender_id,body,created_at", application_id: "in.(" + appIds.join(",") + ")", order: "created_at.desc", limit: 200 });
     const mine = me().id;
     // v78: take the highest id from the other side per app — ids grow
     // monotonically, so this is the latest even if the rows ever come
@@ -1547,6 +1553,23 @@ async function loadUnread(apps, employerSide) {
     // v79: same for previews — state.latestMsg keeps its last value.
   }
   state.unread = out;
+  // v87: in-app notification — when a row turns unread because of a
+  // NEW message (not a decision), name the sender in a toast so the
+  // user sees WHO wrote without opening the chat. Once per message id
+  // (in-memory); never while that chat is open — there the message
+  // itself is already on screen. The toast is the visible mark the
+  // red dot alone was not giving on a slow connection.
+  if (latest) {
+    apps.forEach(function (a) {
+      const m = latest.other[a.id];
+      if (!m || !out[a.id]) return;
+      if ((state.notifiedMsg[a.id] || 0) >= (m.id || 0)) return;
+      state.notifiedMsg[a.id] = m.id || 0;
+      if (state.view.name === "chat" && state.view.applicationId === a.id) return;
+      const nm = employerSide ? (a.freelancer_name || "فریلنسر") : (a.job_employer || (state.jobById[a.job_id] && state.jobById[a.job_id].employer_name) || "کارفرما");
+      showToast("پیام جدید از " + nm);
+    });
+  }
   // v81: remember the inputs the dots were computed from, so the next
   // open can paint them instantly (see seedFromCache). Statuses are
   // fresh from the apps list even when the messages read failed; the
@@ -1667,13 +1690,21 @@ function myAppsList() {
 function myAppsEmployerSide() {
   return getRole() === "employer" && !state.view.own;
 }
-async function refreshUnread() {
-  // Loads the my-apps list (employer: received, freelancer: own) and
-  // recomputes unread — used at boot, on the tab, and by the poll.
-  // Never renders by itself; callers decide whether to repaint.
+async function refreshUnread(full) {
+  // v87: the 10s poll passes full=false — it only re-reads the
+  // messages (the dot + preview); it does NOT reload the applications
+  // list. Reloading the list every 10s re-downloaded the application
+  // rows, whose freelancer_profile.banner is a ~400 KB base64 photo
+  // (measured 2026-11-11: 411 KB on app 1) plus ~130 KB of message
+  // photos — the poll was drowning in it and the dot/preview read,
+  // which runs last, kept failing on a slow connection. The full
+  // reload still happens on boot and on tab switch (switchTab calls
+  // refreshUnread() with no argument).
   try {
-    if (myAppsEmployerSide()) await loadReceivedApplications();
-    else await loadMyApplications();
+    if (full !== false) {
+      if (myAppsEmployerSide()) await loadReceivedApplications();
+      else await loadMyApplications();
+    }
   } catch (e) { return false; }
   await loadUnread(myAppsList(), myAppsEmployerSide());
   paintUnread();
@@ -1693,7 +1724,7 @@ async function refreshMyApps() {
   state.listRefreshing = true;
   try {
     const before = myAppsSignature();
-    const ok = await refreshUnread();
+    const ok = await refreshUnread(false); // v87: light poll — messages only, no applications reload (see refreshUnread)
     if (!ok) return;
     if (state.view.name === "my-apps" && myAppsSignature() !== before) render();
   } finally {
@@ -1716,7 +1747,10 @@ function myAppPreviewText(a) {
   // written in the chat yet.
   const m = state.latestMsg && state.latestMsg[a.id];
   if (m) {
-    const t = m.body ? String(m.body).split("\n")[0] : (m.image ? "📷 عکس" : "");
+    // v87: the list query no longer downloads the photo bytes, so an
+    // empty body IS the photo marker — a message exists only as text,
+    // as a photo, or both.
+    const t = m.body ? String(m.body).split("\n")[0] : "📷 عکس";
     if (t) return t;
   }
   return a.status === "accepted" ? "درخواست شما قبول شد"
@@ -2952,7 +2986,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v86 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v87 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
