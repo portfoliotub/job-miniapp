@@ -89,6 +89,11 @@
   .banner-empty .banner-title { font-weight: 700; font-size: 15px; line-height: 1.3; }
   .banner-empty .muted { color: rgba(255,255,255,.85); font-size: 13px; line-height: 1.3; }
   .banner-edit { position: absolute; left: 8px; bottom: 8px; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+  /* v83: the profile photo is set by hand (no Telegram photo anymore) —
+     the avatar in the profile form gets the same pencil control as the
+     banner, just smaller, overlapping the avatar's bottom-left corner. */
+  .avatar-wrap { position: relative; display: inline-block; flex: none; }
+  .avatar-edit { position: absolute; left: -4px; bottom: -4px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
   /* v29: banner and profile are ONE card (YouTube channel style) — the
      banner is the card's top, the avatar overlaps its bottom edge. v30:
      avatar + name/ID are CENTRED (column layout) so the name sits below
@@ -424,7 +429,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v82</span>
+<span class="app-version" id="app-version">v83</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -693,16 +698,12 @@ function avatarHtml(name) {
    Telegram supplies one (initDataUnsafe.user.photo_url); otherwise the
    letter avatar above. The photo is laid over the letter, so if the URL
    fails to load the img is removed and the letter shows instead. */
-function userAvatarHtml(u) {
-  const photo = u.photo
-    ? '<img class="avatar-photo" src="' + esc(u.photo) + '" alt="">'
-    : "";
-  return '<div class="avatar" style="background:' + avatarColor(u.name) + '">' +
-    esc(String(u.name || "?").trim().charAt(0) || "?") + photo + "</div>";
-}
-/* v41: avatar with an optional photo URL (the freelancer's Telegram
-   photo, stored on the application at apply time). Falls back to the
-   letter avatar when there is no photo or it fails to load. */
+/* v83: the profile form no longer uses the Telegram account photo
+   (userAvatarHtml is gone) — the freelancer sets the profile photo
+   by hand in the form; until then the letter avatar shows. */
+/* v41: avatar with an optional photo URL (the freelancer's manually-set
+   profile photo, stored on the application at apply time). Falls back
+   to the letter avatar when there is no photo or it fails to load. */
 function photoAvatarHtml(name, photo) {
   const img = photo
     ? '<img class="avatar-photo" src="' + esc(photo) + '" alt="">'
@@ -725,7 +726,10 @@ function photoAvatarHtmlLg(name, photo) {
    at the top of the freelancer profile view. It is a JPEG data URL,
    downscaled to max 1280px wide when saved, so the snapshot stays small.
    v60: the Telegram username is included too, so the profile view can
-   show @username under the name like the profile form does. */
+   show @username under the name like the profile form does.
+   v83: the profile photo is included too — the freelancer's manually-set
+   photo (never the Telegram account photo). The snapshot photo is what
+   the profile view, the employer rows and the chat show. */
 function profileSnapshot() {
   const p = getProfile();
   return {
@@ -734,6 +738,7 @@ function profileSnapshot() {
     country: p.country || "",
     bio: p.bio || "",
     banner: p.banner || "",
+    photo: p.photo || "",
     username: me().username || ""
   };
 }
@@ -778,11 +783,16 @@ function bannerHtml(p) {
 function bannerSizeOk(img) {
   return img.naturalWidth === 2560 && img.naturalHeight === 1440;
 }
+/* v83: neither the channel-art banner nor the profile photo may be
+   bigger than 5 MB (source file) — bigger files bloat localStorage
+   and the Supabase rows they are snapshotted into. */
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 /* v27: an uploaded banner photo is downscaled to max 1280px wide (JPEG)
    before storage, so it fits comfortably in localStorage. */
 function handleBannerFile(file) {
   if (!file) return;
   if (file.type.indexOf("image/") !== 0) { showToast("فایل عکس انتخاب کنید"); return; }
+  if (file.size > MAX_PHOTO_BYTES) { showToast("حجم بنر نباید بیشتر از ۵ مگابایت باشد"); return; }
   const reader = new FileReader();
   reader.onload = function () {
     const img = new Image();
@@ -799,6 +809,32 @@ function handleBannerFile(file) {
       saveProfile(Object.assign({}, getProfile(), { banner: canvas.toDataURL("image/jpeg", 0.85) }));
       renderProfile();
       showToast("بنر ذخیره شد ✓");
+    };
+    img.onerror = function () { showToast("خواندن عکس ممکن نشد"); };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+/* v83: the profile photo is set by hand in the profile form (the
+   Telegram account photo is never shown anymore). Like a chat photo,
+   it is downscaled to max 1024px (JPEG) before storage, so the
+   snapshot stays small; the source file itself must be ≤ 5 MB. */
+function handleProfilePhotoFile(file) {
+  if (!file) return;
+  if (file.type.indexOf("image/") !== 0) { showToast("فایل عکس انتخاب کنید"); return; }
+  if (file.size > MAX_PHOTO_BYTES) { showToast("حجم عکس پروفایل نباید بیشتر از ۵ مگابایت باشد"); return; }
+  const reader = new FileReader();
+  reader.onload = function () {
+    const img = new Image();
+    img.onload = function () {
+      const scale = Math.min(1, 1024 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      saveProfile(Object.assign({}, getProfile(), { photo: canvas.toDataURL("image/jpeg", 0.8) }));
+      if (document.getElementById("profile-form")) renderProfile();
+      showToast("عکس پروفایل ذخیره شد ✓");
     };
     img.onerror = function () { showToast("خواندن عکس ممکن نشد"); };
     img.src = reader.result;
@@ -1085,7 +1121,7 @@ function mockApply(p) {
   const id = Math.max.apply(null, MOCK_APPS.map(function (a) { return a.id; }).concat([0])) + 1;
   MOCK_APPS.unshift({
     id: id, job_id: p.job_id, freelancer_id: me().id, freelancer_name: me().name,
-    freelancer_photo: me().photo, freelancer_profile: profileSnapshot(),
+    freelancer_photo: getProfile().photo || "", freelancer_profile: profileSnapshot(),
     samples: p.samples || "", price: p.price || "", message: p.message || "",
     status: "pending", created_at: new Date().toISOString()
   });
@@ -1192,7 +1228,7 @@ async function submitApply(ev, jobId) {
     samples: document.getElementById("f-samples").value.trim(),
     price: document.getElementById("f-price").value.trim(),
     message: document.getElementById("f-message").value.trim(),
-    freelancer_photo: me().photo,
+    freelancer_photo: getProfile().photo || "",
     freelancer_profile: profileSnapshot()
   };
   if (!payload.samples || !payload.price) {
@@ -1210,7 +1246,7 @@ async function submitApply(ev, jobId) {
   try {
     const row = await sbInsert("applications", {
       job_id: jobId, freelancer_id: me().id, freelancer_name: me().name,
-      freelancer_photo: me().photo, freelancer_profile: profileSnapshot(),
+      freelancer_photo: getProfile().photo || "", freelancer_profile: profileSnapshot(),
       samples: payload.samples, price: payload.price, message: payload.message,
       status: "pending"
     });
@@ -1708,7 +1744,7 @@ function renderMyApplications() {
         // the chat top (the full message sits in a box there).
         let h = '<div class="card clickable recv-card" data-recv-card="' + a.id + '">' +
           (state.unread[a.id] ? '<span class="unread-dot"></span>' : "") +
-          '<div class="card-head profile-link" data-profile="' + a.id + '">' + photoAvatarHtml(name, a.freelancer_photo || "") + '<div class="card-title">' + esc(name) + "</div></div>" +
+          '<div class="card-head profile-link" data-profile="' + a.id + '">' + photoAvatarHtml(name, (a.freelancer_profile && a.freelancer_profile.photo) || "") + '<div class="card-title">' + esc(name) + "</div></div>" +
           (a.message ? '<p class="desc recv-msg">' + esc((a.message || "").split("\n")[0]) + "</p>" : "");
         return h + "</div>";
       }).join("");
@@ -1870,7 +1906,7 @@ function renderJobApplications() {
       // show on the request; tapping it opens the chat with them.
       const prof = a.freelancer_profile || null;
       let h = '<div class="card clickable" data-app-card="' + a.id + '">' +
-        '<div class="card-head">' + photoAvatarHtml(a.freelancer_name || "فریلنسر", a.freelancer_photo || "") + '<div class="card-title">' + esc(a.freelancer_name || "فریلنسر") + "</div></div>" +
+        '<div class="card-head">' + photoAvatarHtml(a.freelancer_name || "فریلنسر", (a.freelancer_profile && a.freelancer_profile.photo) || "") + '<div class="card-title">' + esc(a.freelancer_name || "فریلنسر") + "</div></div>" +
         '<div class="meta-row">' + statusBadge(a.status) +
         (a.price ? '<span class="meta">قیمت پیشنهادی: ' + esc(a.price) + "</span>" : "") +
         '<span class="meta">' + fmtDate(a.created_at) + "</span></div>" +
@@ -2338,7 +2374,7 @@ function renderFreelancerProfile() {
     "</div>";
   let html = '<button class="back" data-back>› بازگشت</button>' +
     '<div class="card freelancer-profile">' + bannerStrip +
-    '<div class="fp-head">' + photoAvatarHtmlLg(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
+    '<div class="fp-head">' + photoAvatarHtmlLg(app.freelancer_name || "فریلنسر", (app.freelancer_profile && app.freelancer_profile.photo) || "") +
     '<div class="fp-name">' + esc(app.freelancer_name || "فریلنسر") + "</div>" +
     ((prof && prof.username) ? '<div class="meta">@' + esc(prof.username) + "</div>" : "") +
     "</div>" +
@@ -2377,7 +2413,7 @@ function renderChat() {
   const profCls = profAttr ? " profile-link" : "";
   let html = '<button class="back" data-back>› بازگشت</button>' +
     '<div class="chat-wrap">' +
-    '<div class="card chat-req"><div class="card-head' + profCls + '"' + profAttr + '>' + photoAvatarHtml(app.freelancer_name || "فریلنسر", app.freelancer_photo || "") +
+    '<div class="card chat-req"><div class="card-head' + profCls + '"' + profAttr + '>' + photoAvatarHtml(app.freelancer_name || "فریلنسر", (app.freelancer_profile && app.freelancer_profile.photo) || "") +
     '<div class="card-title">' + esc(app.freelancer_name || "فریلنسر") + "</div></div>" +
     (jobTitle ? '<div class="recv-job">برای آگهی: ' + esc(jobTitle) + "</div>" : "") +
     (app.message ? '<p class="desc">' + esc(app.message) + "</p>" : "") +
@@ -2561,7 +2597,10 @@ function renderProfile() {
   viewEl().innerHTML = "<h2>پروفایل فریلنسری</h2>" +
     '<div class="card profile-card">' +
     bannerHtml(p) +
-    '<div class="card-head">' + userAvatarHtml(u) + '<div><div class="card-title">' + esc(u.name) + "</div>" +
+    '<div class="card-head"><div class="avatar-wrap">' + photoAvatarHtml(u.name, p.photo || "") +
+    '<button class="avatar-edit" id="profile-photo-edit" type="button" aria-label="ویرایش عکس پروفایل">' + ICONS.edit + '</button></div>' +
+    '<input type="file" id="profile-photo-file" accept="image/*" hidden>' +
+    '<div><div class="card-title">' + esc(u.name) + "</div>" +
     '<div class="meta">' + (u.username ? "@" + esc(u.username) : "فریلنسر") + "</div></div></div>" +
     "</div>" +
     '<form id="profile-form">' +
@@ -2583,7 +2622,8 @@ function renderProfile() {
       portfolio: document.getElementById("pf-portfolio").value.trim(),
       country: document.getElementById("pf-country").getAttribute("data-value") || "",
       bio: document.getElementById("pf-bio").value.trim(),
-      banner: getProfile().banner || ""
+      banner: getProfile().banner || "",
+      photo: getProfile().photo || ""
     });
     showToast("پروفایل ذخیره شد ✓");
   });
@@ -2597,6 +2637,14 @@ function renderProfile() {
   });
   document.getElementById("banner-file").addEventListener("change", function (ev) {
     handleBannerFile(ev.target.files && ev.target.files[0]);
+  });
+  // v83: the pencil is the only profile-photo control — it opens the
+  // gallery directly, like the banner pencil.
+  document.getElementById("profile-photo-edit").addEventListener("click", function () {
+    document.getElementById("profile-photo-file").click();
+  });
+  document.getElementById("profile-photo-file").addEventListener("change", function (ev) {
+    handleProfilePhotoFile(ev.target.files && ev.target.files[0]);
   });
   wirePicker("pf-country", "کشور", COUNTRIES);
   const bannerImg = document.getElementById("banner-img");
@@ -2762,7 +2810,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v82 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v83 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2817,7 +2865,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
