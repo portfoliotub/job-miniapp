@@ -429,7 +429,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v84</span>
+<span class="app-version" id="app-version">v85</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1007,6 +1007,7 @@ async function loadMyApplications() {
       if (j) { a.job_title = j.title; a.job_employer = j.employer_name; a.job_employer_photo = j.employer_photo || ""; }
     });
     updateCache({ mine: state.myApplications }); // v81: instant first paint next open
+    state.myApplications.forEach(saveAppCache); // v85: warm the profile cache
     return;
   }
   state.myApplications = await sbSelect("applications", { select: "*", freelancer_id: "eq." + myId, order: "created_at.desc" }) || [];
@@ -1025,6 +1026,7 @@ async function loadMyApplications() {
     } catch (e) {}
   }
   updateCache({ mine: state.myApplications }); // v81: instant first paint next open
+  state.myApplications.forEach(saveAppCache); // v85: warm the profile cache
 }
 async function loadMyJobs() {
   const myId = me().id;
@@ -1040,9 +1042,11 @@ async function loadJobApplications(jobId) {
   if (MOCK) {
     state.jobApplications[jobId] = MOCK_APPS.filter(function (a) { return a.job_id === jobId; })
       .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+    state.jobApplications[jobId].forEach(saveAppCache); // v85: warm the profile cache
     return;
   }
   state.jobApplications[jobId] = await sbSelect("applications", { select: "*", job_id: "eq." + jobId, order: "created_at.desc" }) || [];
+  state.jobApplications[jobId].forEach(saveAppCache); // v85: warm the profile cache
 }
 /* v45: my-jobs cards show the requests received, so the applications
    are loaded together with the jobs. A failed applications read must
@@ -2038,6 +2042,40 @@ function seedChatFromCache(appId) {
     return true;
   } catch (e) { return false; }
 }
+/* v85: the application row itself is cached per user + application, so
+   the freelancer profile (name, photo, banner, skills, bio — all of it
+   lives in the row's freelancer_profile snapshot) paints instantly
+   instead of waiting behind one or two Supabase reads. Same 7-day
+   TTL as the v81/v82 caches; the refresh underneath still brings the
+   newest row. A row with a banner + photo snapshot can be a few
+   hundred KB of base64, so a full store evicts the other app rows
+   and retries once, like saveChatCache. */
+function appCacheKey(appId) { var id = 0; try { id = me().id || 0; } catch (e) {} return "yt_app_" + id + "_" + appId; }
+function saveAppCache(app) {
+  try {
+    if (!app || !app.id) return;
+    const payload = JSON.stringify({ at: Date.now(), app: app });
+    const key = appCacheKey(app.id);
+    try { window.localStorage.setItem(key, payload); } catch (e) {
+      try {
+        for (let i = window.localStorage.length - 1; i >= 0; i--) {
+          const k = window.localStorage.key(i);
+          if (k && k.indexOf("yt_app_") === 0 && k !== key) window.localStorage.removeItem(k);
+        }
+        window.localStorage.setItem(key, payload);
+      } catch (e2) {}
+    }
+  } catch (e) {}
+}
+function seedAppFromCache(appId) {
+  try {
+    const raw = store.get(appCacheKey(appId));
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    if (!c || !c.at || (Date.now() - c.at) > 7 * 24 * 3600 * 1000 || !c.app || !c.app.id) return null;
+    return c.app;
+  } catch (e) { return null; }
+}
 async function loadChatMessages(appId) {
   if (MOCK) {
     state.chatMessages[appId] = MOCK_MESSAGES.filter(function (m) { return m.application_id === appId; })
@@ -2294,6 +2332,14 @@ async function refreshChatApp(appId) {
 async function openChat(appId, back) {
   stopChatPolling();
   let app = findApplication(appId);
+  // v85: the chat header IS the other side's profile (name + photo) —
+  // when the row is not in memory, paint it from the per-app cache
+  // instead of awaiting the network before the first render.
+  let fromCache = false;
+  if (!app && !MOCK) {
+    app = seedAppFromCache(appId);
+    fromCache = !!app;
+  }
   if (!app && !MOCK) {
     try {
       const rows = await sbSelect("applications", { select: "*", id: "eq." + appId });
@@ -2301,6 +2347,7 @@ async function openChat(appId, back) {
     } catch (e) {}
   }
   if (!app) { showToast("درخواست پیدا نشد"); return; }
+  if (!fromCache) saveAppCache(app); // v85: warm the profile cache
   // v73: the job resolves together with the thread below (Promise.all) —
   // no separate round trip before the chat opens. findJob caches it.
   let job = state.jobById[app.job_id] || null;
@@ -2315,7 +2362,13 @@ async function openChat(appId, back) {
   try {
     await Promise.all([
       loadChatMessages(app.id),
-      job ? Promise.resolve(job) : findJob(app.job_id).then(function (j) { job = j; })
+      job ? Promise.resolve(job) : findJob(app.job_id).then(function (j) { job = j; }),
+      // v85: the header painted from the cache — refresh the row
+      // underneath and correct it (same Promise.all, no extra wait).
+      fromCache ? sbSelect("applications", { select: "*", id: "eq." + app.id }).then(function (rows) {
+        const fresh = rows && rows[0];
+        if (fresh) { if (state.view.name === "chat" && state.view.applicationId === app.id) state.view.app = fresh; saveAppCache(fresh); }
+      }).catch(function () {}) : Promise.resolve()
     ]);
     state.view.job = job;
     state.loading = false;
@@ -2329,28 +2382,87 @@ async function openChat(appId, back) {
    freelancer's avatar/name in the received rows or the chat header.
    `back` remembers where the user came from: {name:"my-apps"} from the
    list, or {name:"chat", applicationId, chatBack} from a chat. */
+/* v57: read-only freelancer profile — opened when the employer taps a
+   freelancer's avatar/name in the received rows or the chat header.
+   `back` remembers where the user came from: {name:"my-apps"} from the
+   list, or {name:"chat", applicationId, chatBack} from a chat.
+   v85: it paints INSTANTLY — the app is usually already in memory
+   (the chat it came from holds it in state.view.app), else the
+   per-app cache (v85, same pattern as v81/v82). The old code awaited
+   one Supabase read for the row and then a second, sequential read
+   for the job before rendering anything, so the tap looked dead for
+   10–30s on a slow connection. The network refresh below only
+   corrects the painted profile. */
 async function openFreelancerProfile(appId, back) {
-  let app = findApplication(appId);
-  if (!app && !MOCK) {
-    try {
-      const rows = await sbSelect("applications", { select: "*", id: "eq." + appId });
-      app = rows && rows[0];
-    } catch (e) {}
+  // Everything before the first await runs synchronously when called,
+  // so the view switches on the tap itself — no await before render().
+  let app = null, job = null;
+  if (state.view && state.view.name === "chat" && state.view.applicationId === appId && state.view.app) {
+    app = state.view.app; job = state.view.job || null;
+  } else {
+    app = findApplication(appId);
+    if (app) job = state.jobById[app.job_id] || null;
+    if (!app) app = seedAppFromCache(appId);
+    if (app && !job) {
+      if (MOCK) job = MOCK_JOBS.find(function (j) { return j.id === app.job_id; }) || null;
+      else job = state.jobById[app.job_id] || null;
+    }
   }
-  if (!app) { showToast("درخواست پیدا نشد"); return; }
-  let job = state.jobById[app.job_id] || null;
-  if (!job) {
-    if (MOCK) job = MOCK_JOBS.find(function (j) { return j.id === app.job_id; }) || null;
-    else {
+  if (app) {
+    state.view = { name: "freelancer-profile", applicationId: app.id, back: back || { name: "my-apps" }, app: app, job: job };
+    render();
+    saveAppCache(app);
+    if (!MOCK) refreshFreelancerProfile(app.id);
+    return;
+  }
+  // Cold path (real mode, nothing in memory or cache): fetch the row,
+  // then the job — the job needs the row's job_id, so these two stay
+  // sequential; the cache above is what keeps this path rare.
+  if (MOCK) { showToast("درخواست پیدا نشد"); return; }
+  try {
+    const rows = await sbSelect("applications", { select: "*", id: "eq." + appId });
+    app = rows && rows[0];
+    if (!app) { showToast("درخواست پیدا نشد"); return; }
+    job = state.jobById[app.job_id] || null;
+    if (!job) {
       try {
-        const rows = await sbSelect("jobs", { select: "*", id: "eq." + app.job_id });
-        job = rows && rows[0];
+        const jrows = await sbSelect("jobs", { select: "*", id: "eq." + app.job_id });
+        job = jrows && jrows[0];
         if (job) state.jobById[job.id] = job;
       } catch (e) {}
     }
-  }
-  state.view = { name: "freelancer-profile", applicationId: app.id, back: back || { name: "my-apps" }, app: app, job: job };
-  render();
+    state.view = { name: "freelancer-profile", applicationId: app.id, back: back || { name: "my-apps" }, app: app, job: job };
+    render();
+    saveAppCache(app);
+  } catch (e) { showToast("درخواست پیدا نشد"); }
+}
+/* v85: background refresh for the instantly-painted profile — re-reads
+   the row (and the job when the view has none) and re-renders only
+   when still on that profile and something actually changed. */
+function refreshFreelancerProfile(appId) {
+  sbSelect("applications", { select: "*", id: "eq." + appId }).then(function (rows) {
+    const fresh = rows && rows[0];
+    if (!fresh) return;
+    saveAppCache(fresh);
+    if (state.view.name !== "freelancer-profile" || state.view.applicationId !== appId) return;
+    const changed = JSON.stringify(state.view.app) !== JSON.stringify(fresh);
+    const hadJob = !!state.view.job;
+    state.view.app = fresh;
+    let jobP = Promise.resolve();
+    if (!state.view.job) {
+      jobP = sbSelect("jobs", { select: "*", id: "eq." + fresh.job_id }).then(function (jrows) {
+        const j = jrows && jrows[0];
+        if (j) { state.view.job = j; state.jobById[j.id] = j; }
+      }).catch(function () {});
+    }
+    jobP.then(function () {
+      // Re-render only on a real change — re-rendering identical
+      // content would reset the scroll while the user reads.
+      if (changed || (!hadJob && state.view.job)) {
+        if (state.view.name === "freelancer-profile" && state.view.applicationId === appId) render();
+      }
+    });
+  }).catch(function () {});
 }
 function renderFreelancerProfile() {
   const app = state.view.app;
@@ -2808,7 +2920,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v84 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v85 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2863,7 +2975,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
