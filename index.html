@@ -392,6 +392,29 @@
   .role-title { display: block; font-size: 16px; font-weight: 800; }
   .role-sub { display: block; font-size: 13px; color: var(--hint); margin-top: 2px; }
   .welcome-note { font-size: 12.5px; color: var(--hint); text-align: center; margin-top: 14px; }
+  /* v94: professional onboarding screen — brand tile, progress bar,
+     and icon rows with subtitles + chevron (structure/selectors kept:
+     [data-source] x6, .role-title, same texts, same tap behaviour). */
+  .onb .welcome-hero { padding-top: 30px; }
+  .onb-tile { width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center; color: #fff; background: linear-gradient(135deg, var(--link), #0e9594); box-shadow: 0 6px 16px rgba(36,129,204,0.35); }
+  .onb-tile svg { width: 30px; height: 30px; }
+  .onb-progress { display: flex; gap: 6px; max-width: 120px; margin: 12px auto 0; }
+  .onb-seg { flex: 1; height: 4px; border-radius: 999px; background: var(--separator); }
+  .onb-seg.on { background: var(--link); }
+  .onb .welcome-q { font-size: 16px; margin: 20px 0 12px; }
+  .role-card.onb-src { border: 1px solid var(--separator); box-shadow: 0 1px 4px rgba(0,0,0,0.06); padding: 12px 14px; margin: 10px 0; }
+  .onb-ico { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .onb-ico svg { width: 22px; height: 22px; }
+  .onb-ico.t-tg { background: #e3f1fb; color: #229ED9; }
+  .onb-ico.t-yt { background: #fde8e8; color: #FF0000; }
+  .onb-ico.t-ig { background: #fbe9f3; color: #C13584; }
+  .onb-ico.t-fr { background: #e6f4ef; color: #0e9594; }
+  .onb-ico.t-gg { background: #e8f0fe; color: #1a73e8; }
+  .onb-ico.t-ot { background: #f0f0f0; color: #707579; }
+  .onb-chev { color: var(--hint); flex-shrink: 0; display: flex; }
+  .onb-chev svg { width: 18px; height: 18px; }
+  .onb .welcome-note { display: flex; gap: 6px; align-items: center; justify-content: center; margin-top: 16px; }
+  .onb .welcome-note svg { width: 15px; height: 15px; flex-shrink: 0; }
   /* Freelancer browse: search + filter chips (Upwork-style). */
   .search-input { margin: 4px 12px 0; width: calc(100% - 24px); }
   .chip-row { display: flex; gap: 6px; padding: 10px 12px 2px; overflow-x: auto; scrollbar-width: none; }
@@ -432,7 +455,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v93</span>
+<span class="app-version" id="app-version">v94</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -589,14 +612,28 @@ function recordOnboarding(role) {
   if (!src) return;
   sbInsert("onboarding_responses", { telegram_id: me().id, source: src, role: role }).then(function () {}, function () {});
 }
+/* v94: per-source icon + subtitle for the professional onboarding rows
+   (line icons, no emojis; brand-tinted tiles). */
+const ONB_META = {
+  "تلگرام": { cls: "t-tg", sub: "از طریق ربات یا کانال", svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>' },
+  "یوتیوب": { cls: "t-yt", sub: "از ویدیوهای یوتیوب", svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/></svg>' },
+  "اینستاگرام": { cls: "t-ig", sub: "از پیج اینستاگرام", svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>' },
+  "دوست یا آشنا": { cls: "t-fr", sub: "معرفی یک دوست", svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+  "جستجو در گوگل": { cls: "t-gg", sub: "سرچ در گوگل", svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' },
+  "سایر": { cls: "t-ot", sub: "راه دیگری", svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>' }
+};
+const ONB_TILE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>';
+const ONB_CHEV_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+const ONB_INFO_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 function renderOnboarding() {
-  viewEl().innerHTML = '<div class="welcome">' +
-    '<div class="welcome-hero"><div class="welcome-title">قبل از شروع، یه سوال</div></div>' +
+  viewEl().innerHTML = '<div class="welcome onb">' +
+    '<div class="welcome-hero"><div class="onb-tile">' + ONB_TILE_SVG + '</div><div class="welcome-title">قبل از شروع، یه سوال</div><div class="onb-progress"><span class="onb-seg on"></span><span class="onb-seg"></span></div></div>' +
     '<div class="welcome-q">از چه طریقی با ما آشنا شدی؟</div>' +
     SOURCES.map(function (s) {
-      return '<button type="button" class="role-card" data-source="' + esc(s) + '"><span><span class="role-title">' + esc(s) + '</span></span></button>';
+      const m = ONB_META[s] || ONB_META["سایر"];
+      return '<button type="button" class="role-card onb-src" data-source="' + esc(s) + '"><span class="onb-ico ' + m.cls + '">' + m.svg + '</span><span><span class="role-title">' + esc(s) + '</span><span class="role-sub">' + esc(m.sub) + '</span></span><span class="onb-chev">' + ONB_CHEV_SVG + '</span></button>';
     }).join("") +
-    '<div class="welcome-note">جوابت فقط برای بهتر شدن ماست.</div>' +
+    '<div class="welcome-note">' + ONB_INFO_SVG + '<span>جوابت فقط برای بهتر شدن ماست.</span></div>' +
     "</div>";
   viewEl().querySelectorAll("[data-source]").forEach(function (el) {
     el.addEventListener("click", function () {
@@ -3208,7 +3245,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v93 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v94 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
