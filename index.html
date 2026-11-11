@@ -432,7 +432,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v91</span>
+<span class="app-version" id="app-version">v92</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1225,6 +1225,15 @@ async function openJobDetail(jobId) {
     syncTgBackButton(); // v71: openJobDetail renders after render() returns
     return;
   }
+  // v92: nobody reaches the apply form without completed onboarding +
+  // a role. A fresh user who opened the ad from the channel is sent back
+  // to the onboarding question (or the role cards); the deep link
+  // survives in the URL, so the ad reopens after they finish.
+  if (getOnboardVersion() !== ONBOARD_VERSION || !getRole()) {
+    state.view = { name: getOnboardVersion() !== ONBOARD_VERSION ? "onboarding" : "welcome" };
+    render();
+    return;
+  }
   const mine = job.employer_id === me().id;
   const alreadyApplied = state.myApplications.some(function (a) { return a.job_id === jobId; });
   let html = '<button class="back" data-back>› بازگشت</button>' +
@@ -1243,7 +1252,7 @@ async function openJobDetail(jobId) {
     html += '<button class="btn" id="see-apps">مشاهده درخواست‌ها</button>';
   } else if (alreadyApplied) {
     html += '<div class="card"><span class="muted">شما برای این آگهی درخواست فرستاده‌اید.</span></div>';
-  } else if (job.status === "open") {
+  } else if (job.status === "open" && getRole() === "freelancer") {
     html += '<h2>ارسال درخواست</h2>' +
       '<form id="apply-form">' +
       '<label>لینک نمونه‌کارها (هر لینک در یک خط)</label>' +
@@ -1254,6 +1263,10 @@ async function openJobDetail(jobId) {
       '<textarea id="f-message" placeholder="چند جمله درباره تجربه و زمان تحویل…"></textarea>' +
       '<button class="btn" type="submit">ارسال درخواست</button>' +
       "</form>";
+  } else if (job.status === "open") {
+    // v92: the ad is open but the viewer is not a freelancer (e.g. an
+    // employer who opened someone else's ad) — read-only, no form.
+    html += '<div class="card" id="apply-locked"><span class="muted">این آگهی برای فریلنسرهاست — برای ارسال درخواست، نقش فریلنسر رو انتخاب کن.</span></div>';
   }
   viewEl().innerHTML = html;
   bindBack(homeTab());
@@ -1281,6 +1294,15 @@ async function openJobDetail(jobId) {
 
 async function submitApply(ev, jobId) {
   ev.preventDefault();
+  // v92: defense in depth — the insert below must never run without
+  // completed onboarding + the freelancer role, even if the form was
+  // reached another way.
+  if (getOnboardVersion() !== ONBOARD_VERSION || getRole() !== "freelancer") {
+    showToast("اول سوال‌ها رو جواب بده و نقش فریلنسر رو انتخاب کن");
+    state.view = { name: getOnboardVersion() !== ONBOARD_VERSION ? "onboarding" : "welcome" };
+    render();
+    return;
+  }
   const payload = {
     type: "apply",
     job_id: jobId,
@@ -2945,11 +2967,13 @@ function renderWelcome() {
     "</div>";
   viewEl().querySelectorAll("[data-role]").forEach(function (el) {
     el.addEventListener("click", function () {
-      setRole(el.getAttribute("data-role"));
-      // v65: came from a channel job link — open that ad's detail
-      // (with the apply form) instead of the home tab.
+      const picked = el.getAttribute("data-role");
+      setRole(picked);
+      // v92: the channel's job link (v65) opens the ad only for
+      // freelancers — an employer goes to their own home, never to the
+      // apply form.
       const dj = deepJobId();
-      if (dj) openJobDetail(dj); else switchTab(homeTab());
+      if (dj && picked === "freelancer") openJobDetail(dj); else switchTab(homeTab());
     });
   });
   const back = document.getElementById("welcome-back");
@@ -3184,7 +3208,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v91 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v92 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
