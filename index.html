@@ -429,7 +429,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v85</span>
+<span class="app-version" id="app-version">v86</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -649,6 +649,7 @@ const state = {
   myJobs: [],
   jobApplications: {}, // jobId -> [applications]
   chatMessages: {}, // applicationId -> [messages]
+  chatPartial: {}, // v86: applicationId -> the thread holds only its tail/seed so far, the full fetch is still owed
   chatTimer: null, // polling interval while a chat is open
   rtSocket: null, // v77: Realtime WebSocket while a chat is open
   rtTimer: null, // v77: Realtime heartbeat interval
@@ -1561,7 +1562,7 @@ async function loadUnread(apps, employerSide) {
       next[a.id] = {
         msg: latest ? (m ? (m.id || 0) : 0) : (old.msg || 0),
         status: a.status || old.status || "pending",
-        preview: latest ? (m ? { id: m.id || 0, body: m.body || "", image: m.image || "" } : null) : (old.preview || null)
+        preview: latest ? (m ? { id: m.id || 0, body: m.body || "", image: m.image || "", sender_id: m.sender_id, created_at: m.created_at || "" } : null) : (old.preview || null)
       };
     });
     updateCache({ unread: next });
@@ -2042,6 +2043,24 @@ function seedChatFromCache(appId) {
     return true;
   } catch (e) { return false; }
 }
+/* v86: paint the last RECEIVED message instantly on chat open — it is
+   already in memory (state.latestMsg, v79/v84), so the chat shows it
+   with zero network while the thread loads underneath. The list is
+   marked partial so loadChatMessages still does the full fetch (a
+   delta fetch from this max id would never bring the older history).
+   A cached preview may lack created_at/sender_id (v81 shape) — the
+   message still renders on the correct (received) side, just without
+   a timestamp; the full fetch fills it in. */
+function seedTailFromLatest(appId) {
+  try {
+    const m = state.latestMsg && state.latestMsg[appId];
+    if (!m || !m.id) return false;
+    if ((state.chatMessages[appId] || []).length) return false;
+    state.chatMessages[appId] = [m];
+    state.chatPartial[appId] = true;
+    return true;
+  } catch (e) { return false; }
+}
 /* v85: the application row itself is cached per user + application, so
    the freelancer profile (name, photo, banner, skills, bio — all of it
    lives in the row's freelancer_profile snapshot) paints instantly
@@ -2087,14 +2106,25 @@ async function loadChatMessages(appId) {
   // shown (ids grow monotonically) instead of the whole thread — the
   // full re-read every tick was the heaviest chat cost.
   const list = state.chatMessages[appId];
-  if (list && list.length) {
+  if (list && list.length && !state.chatPartial[appId]) {
     const maxId = Math.max.apply(null, list.map(function (m) { return m.id || 0; }));
     const rows = await sbSelect("messages", { select: "*", application_id: "eq." + appId, id: "gt." + maxId, order: "created_at.asc" }) || [];
     if (rows.length) { state.chatMessages[appId] = list.concat(rows); saveChatCache(appId); } // v82
     return;
   }
+  // v86: TAIL FIRST — the last 10 messages are a ~10 KB read, the whole
+  // thread is ~130 KB. Paint the tail (the last received message is in
+  // it) the moment it lands, then fetch the full thread underneath and
+  // replace. Sorted + sliced defensively: the server already returns
+  // the last 10 in id.desc, but a stub/proxy may ignore limit/order.
+  const tail = await sbSelect("messages", { select: "*", application_id: "eq." + appId, order: "id.desc", limit: "10" }) || [];
+  tail.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+  state.chatMessages[appId] = tail.slice(-10);
+  state.chatPartial[appId] = true;
+  if (state.view.name === "chat" && state.view.applicationId === appId) { state.loading = false; refreshChatMessages(); }
   state.chatMessages[appId] = await sbSelect("messages", { select: "*", application_id: "eq." + appId, order: "created_at.asc" }) || [];
-  saveChatCache(appId); // v82
+  state.chatPartial[appId] = false;
+  saveChatCache(appId); // v82 (only the complete thread is cached)
 }
 function fmtTime(iso) {
   if (!iso) return "";
@@ -2355,7 +2385,9 @@ async function openChat(appId, back) {
   state.view = { name: "chat", applicationId: app.id, back: back, app: app, job: job };
   state.chatImage = null;
   // v82: a cached thread paints instantly; only a first-time open shows the spinner.
-  state.loading = !seedChatFromCache(app.id);
+  // v86: no cache? the last received message still paints instantly from
+  // state.latestMsg (zero network) while the tail fetch runs below.
+  state.loading = !(seedChatFromCache(app.id) || seedTailFromLatest(app.id));
   render();
   // v73: the job and the thread load in parallel instead of one after
   // the other — opening a chat used to cost 2–3 sequential round trips.
@@ -2920,7 +2952,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v85 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v86 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2975,7 +3007,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
