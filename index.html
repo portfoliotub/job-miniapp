@@ -429,7 +429,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v83</span>
+<span class="app-version" id="app-version">v84</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -657,7 +657,7 @@ const state = {
   rtStatus: "off", // v77: off | connecting | on | unavailable
   rtDebug: null, // v77: last Realtime join attempt {appId, topic, filter} (test hook)
   unread: {}, // v72: applicationId -> has an unseen message/decision
-  latestMsg: {}, // v79: applicationId -> latest thread message (any side), for the freelancer row preview
+  latestMsg: {}, // v84: applicationId -> latest RECEIVED message (other side), for the freelancer row preview — never my own message
   listTimer: null, // v72: 10s refresh of the my-apps list + unread badge (v76: was 20s)
   chatImage: null, // pending photo (data URL) attached to the next message
   jobById: {},
@@ -1474,26 +1474,24 @@ async function latestOtherMessages(appIds) {
   // v73: ONE query for all rows instead of one GET per application —
   // each GET costs ~0.7s, so 5 rows used to add ~3.5s before the dots
   // appeared. Returns {other: {appId: latest row from the other side |
-  // null}, any: {appId: latest row from either side | null}} — v79: the
-  // freelancer row shows the latest thread message as its preview, so
-  // the "any" map carries the message bodies too.
+  // null}} — v84: the freelancer row preview shows the last RECEIVED
+  // message, so the "other" map carries the message bodies too; my own
+  // rows never appear there, however new they are.
   // v78: the newest row is often mine (I just replied) — that must not
   // hide the other side's latest message sitting below it, or its dot
   // never appears until they write again. Skip my own rows and take
   // the newest row from the other side.
   const out = {};
-  const any = {};
-  appIds.forEach(function (id) { out[id] = null; any[id] = null; });
-  if (!appIds.length) return { other: out, any: any };
+  appIds.forEach(function (id) { out[id] = null; });
+  if (!appIds.length) return { other: out };
   if (MOCK) {
     const mine = me().id;
     appIds.forEach(function (id) {
       const list = MOCK_MESSAGES.filter(function (m) { return m.application_id === id; });
       const other = list.filter(function (m) { return m.sender_id !== mine; });
       out[id] = other.length ? other[other.length - 1] : null;
-      any[id] = list.length ? list[list.length - 1] : null;
     });
-    return { other: out, any: any };
+    return { other: out };
   }
   try {
     const rows = await sbSelect("messages", { select: "id,application_id,sender_id,body,image,created_at", application_id: "in.(" + appIds.join(",") + ")", order: "created_at.desc", limit: 200 });
@@ -1502,14 +1500,12 @@ async function latestOtherMessages(appIds) {
     // monotonically, so this is the latest even if the rows ever come
     // back in a different order than the requested created_at desc.
     (rows || []).forEach(function (m) {
-      var curAny = any[m.application_id];
-      if (!curAny || (m.id || 0) > (curAny.id || 0)) any[m.application_id] = m;
       if (m.sender_id === mine) return; // v78: my own rows never count (see above)
       var cur = out[m.application_id];
       if (!cur || (m.id || 0) > (cur.id || 0)) out[m.application_id] = m;
     });
   } catch (e) { /* v76: signal the failure (null) so the caller keeps the last-known dots instead of clearing them — the list still shows */ return null; }
-  return { other: out, any: any };
+  return { other: out };
 }
 async function loadUnread(apps, employerSide) {
   const read = getReadState();
@@ -1533,7 +1529,7 @@ async function loadUnread(apps, employerSide) {
   // The dot check below still only runs for needMsg rows.
   const latest = await latestOtherMessages(apps.map(function (a) { return a.id; }));
   if (latest) {
-    state.latestMsg = latest.any; // v79: latest thread message per app (any side)
+    state.latestMsg = latest.other; // v84: latest RECEIVED message per app (other side) — the freelancer row preview never shows my own message
     needMsg.forEach(function (id) {
       const m = latest.other[id];
       const r = read[id] || {};
@@ -1558,11 +1554,10 @@ async function loadUnread(apps, employerSide) {
     apps.forEach(function (a) {
       const old = prev[a.id] || {};
       const m = latest ? latest.other[a.id] : null;
-      const anyM = latest ? latest.any[a.id] : null;
       next[a.id] = {
         msg: latest ? (m ? (m.id || 0) : 0) : (old.msg || 0),
         status: a.status || old.status || "pending",
-        preview: latest ? (anyM ? { id: anyM.id || 0, body: anyM.body || "", image: anyM.image || "" } : null) : (old.preview || null)
+        preview: latest ? (m ? { id: m.id || 0, body: m.body || "", image: m.image || "" } : null) : (old.preview || null)
       };
     });
     updateCache({ unread: next });
@@ -1708,9 +1703,12 @@ function startListPolling() {
 function myAppPreviewText(a) {
   // v79: the freelancer row is a chat-list row — show the latest thread
   // message (first line; «📷 عکس» for a photo-only message) when the
-  // thread has one. Otherwise the employer's decision status — that is
-  // what the row showed before, and it is still the right text when
-  // nobody has written in the chat yet.
+  // thread has one. v84: that message is always the last RECEIVED one
+  // (from the other side — state.latestMsg holds only those, and the
+  // cache seeds the same); my own newer message never takes this slot.
+  // Otherwise the employer's decision status — that is what the row
+  // showed before, and it is still the right text when nobody has
+  // written in the chat yet.
   const m = state.latestMsg && state.latestMsg[a.id];
   if (m) {
     const t = m.body ? String(m.body).split("\n")[0] : (m.image ? "📷 عکس" : "");
@@ -2810,7 +2808,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v83 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v84 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
