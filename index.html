@@ -432,7 +432,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v92</span>
+<span class="app-version" id="app-version">v93</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -575,7 +575,7 @@ function setRole(r) {
    the role cards, exactly once per version. */
 const ONBOARD_KEY = "yt_onboarded";
 const SOURCE_KEY = "yt_source";
-const ONBOARD_VERSION = "v91";
+const ONBOARD_VERSION = "v92";
 const ONBOARD_VERSION_KEY = "yt_onboarded_v";
 function getOnboardVersion() { return store.get(ONBOARD_VERSION_KEY) || ""; }
 const SOURCES = ["تلگرام", "یوتیوب", "اینستاگرام", "دوست یا آشنا", "جستجو در گوگل", "سایر"];
@@ -3208,7 +3208,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v92 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v93 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
