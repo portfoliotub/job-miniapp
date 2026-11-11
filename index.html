@@ -432,7 +432,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v90</span>
+<span class="app-version" id="app-version">v91</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -567,10 +567,17 @@ function setRole(r) {
    found the bot, BEFORE the role cards. The answer is stored locally
    (yt_source + yt_onboarded) so the question never repeats on this
    device, and recorded in Supabase with the role they then pick
-   (onboarding_responses) — one row per role pick. Existing users (role
-   already set) never see the question. */
+   (onboarding_responses) — one row per role pick.
+   v91: the gate is a VERSION, not the role. The role + onboarded flags
+   live on the device (localStorage + Telegram CloudStorage), NOT in the
+   database — so wiping the DB never re-asks anyone. Bumping
+   ONBOARD_VERSION re-asks EVERYONE (old and new) the question and then
+   the role cards, exactly once per version. */
 const ONBOARD_KEY = "yt_onboarded";
 const SOURCE_KEY = "yt_source";
+const ONBOARD_VERSION = "v91";
+const ONBOARD_VERSION_KEY = "yt_onboarded_v";
+function getOnboardVersion() { return store.get(ONBOARD_VERSION_KEY) || ""; }
 const SOURCES = ["تلگرام", "یوتیوب", "اینستاگرام", "دوست یا آشنا", "جستجو در گوگل", "سایر"];
 function getOnboarded() { return store.get(ONBOARD_KEY) === "1"; }
 function recordOnboarding(role) {
@@ -595,6 +602,7 @@ function renderOnboarding() {
     el.addEventListener("click", function () {
       store.set(SOURCE_KEY, el.getAttribute("data-source"));
       store.set(ONBOARD_KEY, "1");
+      store.set(ONBOARD_VERSION_KEY, ONBOARD_VERSION);
       showWelcome();
     });
   });
@@ -3176,7 +3184,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v90 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v91 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -3202,10 +3210,12 @@ async function switchTab(tab) {
   const dj = deepJobId();
   // v80: land in the role's home (or the deep-linked ad, or welcome).
   function finishBoot() {
-    // v90: a new user (no role yet) answers the onboarding question
-    // first; an existing user (role set, or restored from the cloud
-    // above) never sees it.
-    if (!getRole() && !getOnboarded()) { state.view = { name: "onboarding" }; render(); }
+    // v91: the onboarding question shows whenever the stored onboarding
+    // version is older than ONBOARD_VERSION — including users who
+    // already have a role (their role + flags live on the device, so a
+    // database wipe alone never re-asks them). After answering they pick
+    // a role again on the welcome screen.
+    if (getOnboardVersion() !== ONBOARD_VERSION) { state.view = { name: "onboarding" }; render(); }
     else if (!getRole()) { state.view = { name: "welcome" }; render(); }
     else if (dj) { preload.then(function () { openJobDetail(dj); }); }
     else switchTab(homeTab());
