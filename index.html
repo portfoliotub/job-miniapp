@@ -424,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v81</span>
+<span class="app-version" id="app-version">v82</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1965,10 +1965,50 @@ function findApplication(appId) {
   if (MOCK) return MOCK_APPS.find(function (a) { return a.id === appId; }) || null;
   return null;
 }
+/* v82: the chat thread is cached per user + application so a fresh
+   open shows the thread instantly instead of re-downloading it — the
+   live thread is ~130 KB with one photo, seconds on a slow
+   connection. The delta fetch underneath still brings new messages
+   (the seed feeds loadChatMessages its max id, so the refresh only
+   asks for newer rows). Entries older than 7 days are ignored. */
+function chatCacheKey(appId) { var id = 0; try { id = me().id || 0; } catch (e) {} return "yt_chat_" + id + "_" + appId; }
+function saveChatCache(appId) {
+  try {
+    const list = state.chatMessages[appId] || [];
+    if (!list.length) return;
+    const payload = JSON.stringify({ at: Date.now(), rows: list.slice(-50) });
+    const key = chatCacheKey(appId);
+    try { window.localStorage.setItem(key, payload); } catch (e) {
+      // storage full (photos are big) — drop the other cached threads
+      // and retry once; the thread being opened is the one that matters.
+      try {
+        for (let i = window.localStorage.length - 1; i >= 0; i--) {
+          const k = window.localStorage.key(i);
+          if (k && k.indexOf("yt_chat_") === 0 && k !== key) window.localStorage.removeItem(k);
+        }
+        window.localStorage.setItem(key, payload);
+      } catch (e2) {}
+    }
+  } catch (e) {}
+}
+function seedChatFromCache(appId) {
+  // Fills the in-memory thread from the cache; true when a thread is
+  // available to paint (already there or just seeded).
+  try {
+    if ((state.chatMessages[appId] || []).length) return true;
+    const raw = store.get(chatCacheKey(appId));
+    if (!raw) return false;
+    const c = JSON.parse(raw);
+    if (!c || !c.at || (Date.now() - c.at) > 7 * 24 * 3600 * 1000 || !c.rows || !c.rows.length) return false;
+    state.chatMessages[appId] = c.rows.slice();
+    return true;
+  } catch (e) { return false; }
+}
 async function loadChatMessages(appId) {
   if (MOCK) {
     state.chatMessages[appId] = MOCK_MESSAGES.filter(function (m) { return m.application_id === appId; })
       .slice().sort(function (a, b) { return a.created_at.localeCompare(b.created_at); });
+    saveChatCache(appId); // v82
     return;
   }
   // v73: a poll tick fetches only messages newer than the ones already
@@ -1978,10 +2018,11 @@ async function loadChatMessages(appId) {
   if (list && list.length) {
     const maxId = Math.max.apply(null, list.map(function (m) { return m.id || 0; }));
     const rows = await sbSelect("messages", { select: "*", application_id: "eq." + appId, id: "gt." + maxId, order: "created_at.asc" }) || [];
-    if (rows.length) state.chatMessages[appId] = list.concat(rows);
+    if (rows.length) { state.chatMessages[appId] = list.concat(rows); saveChatCache(appId); } // v82
     return;
   }
   state.chatMessages[appId] = await sbSelect("messages", { select: "*", application_id: "eq." + appId, order: "created_at.asc" }) || [];
+  saveChatCache(appId); // v82
 }
 function fmtTime(iso) {
   if (!iso) return "";
@@ -2232,7 +2273,8 @@ async function openChat(appId, back) {
   if (!job && MOCK) job = MOCK_JOBS.find(function (j) { return j.id === app.job_id; }) || null;
   state.view = { name: "chat", applicationId: app.id, back: back, app: app, job: job };
   state.chatImage = null;
-  state.loading = true;
+  // v82: a cached thread paints instantly; only a first-time open shows the spinner.
+  state.loading = !seedChatFromCache(app.id);
   render();
   // v73: the job and the thread load in parallel instead of one after
   // the other — opening a chat used to cost 2–3 sequential round trips.
@@ -2720,7 +2762,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v81 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v82 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2775,7 +2817,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
