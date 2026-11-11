@@ -429,7 +429,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v88</span>
+<span class="app-version" id="app-version">v89</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1384,11 +1384,15 @@ async function submitPostJob(ev) {
   if (editingId) {
     const editingJob = state.jobById[editingId] || state.myJobs.find(function (j) { return j.id === editingId; });
     const wasRejected = editingJob && editingJob.status === "rejected";
+    // v89: never PATCH employer_photo to "" — that would wipe a
+    // backfilled photo (the backfill only matches NULL, so it could
+    // never restore it). Only send the photo when one is actually set.
     const update = {
       title: payload.title, category: payload.category, budget: payload.budget,
       deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
-      description: payload.description, employer_photo: me().photo
+      description: payload.description
     };
+    if (me().photo) update.employer_photo = me().photo;
     if (wasRejected) update.status = "pending";
     if (MOCK) {
       mockUpdateJob(editingId, payload);
@@ -1421,12 +1425,18 @@ async function submitPostJob(ev) {
   // the reads already use). This works even when Telegram's sendData is a
   // no-op — e.g. the app was opened from the menu button instead of /start.
   try {
-    const row = await sbInsert("jobs", {
-      employer_id: me().id, employer_name: me().name, employer_photo: me().photo,
+    // v89: only send employer_photo when the user actually has one.
+    // me().photo is "" in Telegram (initData has no photo_url), and
+    // sending "" would leave the row unfixable — the bot backfill only
+    // matches NULL. Omitting it leaves NULL so the backfill fills it.
+    const jobRow = {
+      employer_id: me().id, employer_name: me().name,
       title: payload.title, category: payload.category, budget: payload.budget,
       deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
       description: payload.description, status: "pending"
-    });
+    };
+    if (me().photo) jobRow.employer_photo = me().photo;
+    const row = await sbInsert("jobs", jobRow);
     // Best-effort: tell the bot so the admin is notified instantly.
     // If Telegram's send is broken, the bot's periodic check picks it up.
     sendViaTelegram({ type: "notify_job_posted", job_id: row && row.id, title: payload.title });
@@ -3124,7 +3134,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v88 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v89 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
