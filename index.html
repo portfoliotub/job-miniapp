@@ -429,7 +429,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v87</span>
+<span class="app-version" id="app-version">v88</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -657,6 +657,11 @@ const state = {
   rtAppId: null, // v77: application the Realtime socket is subscribed to
   rtStatus: "off", // v77: off | connecting | on | unavailable
   rtDebug: null, // v77: last Realtime join attempt {appId, topic, filter} (test hook)
+  listRtSocket: null, // v88: Realtime WebSocket for the LIST (see startListRealtime) — survives render(), unlike the chat socket
+  listRtTimer: null, // v88: Realtime heartbeat interval (list)
+  listRtRetry: null, // v88: Realtime reconnect timeout (list)
+  listRtStatus: "off", // v88: off | connecting | on | unavailable
+  listRtDebug: null, // v88: last list-Realtime join attempt {topic, filter} (test hook)
   unread: {}, // v72: applicationId -> has an unseen message/decision
   latestMsg: {}, // v84: applicationId -> latest RECEIVED message (other side), for the freelancer row preview — never my own message
   notifiedMsg: {}, // v87: applicationId -> last message id a "new message" toast was shown for (in-memory; the toast fires once per message)
@@ -2342,6 +2347,139 @@ function startChatRealtime(appId) {
   }
   connect();
 }
+/* ================= list Realtime (v88) =================
+   The dot + toast for a new chat message used to depend entirely on
+   the 10s REST poll (loadUnread). On the user's connection that read
+   is slow (30s timeout, 2 attempts) and Supabase drops connections
+   in waves (RemoteDisconnected, live in the bot log 13:25–13:26 UTC
+   2026-11-11) — and a tap on the row opens the chat first, where
+   markRead() sets yt_read.msgId past the new message, so the next
+   poll computes "read" and the dot NEVER visibly appears (2026-11-11
+   16:53: Mr rok's «سلام» / «خوبی», ids 25/26 — the preview updated
+   but no dot, no toast). The list socket pushes the dot + toast +
+   preview in ~1s, straight from the INSERT event; the 10s poll stays
+   as the fallback. It is a SEPARATE socket from the chat's: render()
+   stops the chat socket on every render, the list socket must survive
+   renders, tab switches and openChat. One subscription for the whole
+   messages table (no per-app filter — apps come and go), client-side
+   filter by the applications already in the lists; a brand-new
+   application still arrives via the full refresh on tab switch. */
+const LIST_RT_TOPIC = "realtime:public:messages";
+function stopListRealtime() {
+  if (state.listRtTimer) { clearInterval(state.listRtTimer); state.listRtTimer = null; }
+  if (state.listRtRetry) { clearTimeout(state.listRtRetry); state.listRtRetry = null; }
+  if (state.listRtSocket) { try { state.listRtSocket.close(); } catch (e) {} state.listRtSocket = null; }
+  state.listRtStatus = "off";
+}
+function listRtOnInsert(record) {
+  // One INSERT event from the list socket — same row shape as the
+  // REST read. Only lights what the user has not seen: other-side
+  // messages on applications already in the lists. The open chat
+  // owns its own app (rtOnInsert renders + markRead there), so a
+  // record for it is left alone here. Own messages never count.
+  if (!record || record.application_id == null) return false;
+  var appId = record.application_id;
+  var app = (state.myApplications || []).concat(state.receivedApps || []).find(function (a) { return a.id === appId; });
+  if (!app) return false;
+  if (record.sender_id === me().id) return false;
+  var list = state.chatMessages[appId] || [];
+  if (list.some(function (m) { return m.id === record.id; })) return false; // dedupe with the thread (chat socket / poll may have it)
+  list.push(record);
+  list.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+  state.chatMessages[appId] = list;
+  if (state.view.name === "chat" && state.view.applicationId === appId) return false;
+  var m = { id: record.id || 0, body: record.body || "", image: "", sender_id: record.sender_id, created_at: record.created_at || "" };
+  state.latestMsg[appId] = m; // the freelancer row preview (never my own message)
+  var read = getReadState();
+  var r = read[appId] || {};
+  var isNew = !r.msgId || (m.id || 0) > r.msgId;
+  if (isNew) {
+    state.unread[appId] = true;
+    if ((state.notifiedMsg[appId] || 0) < (m.id || 0)) {
+      state.notifiedMsg[appId] = m.id || 0;
+      var nm = record.sender_name || app.freelancer_name || app.job_employer || (state.jobById[app.job_id] && state.jobById[app.job_id].employer_name) || "کارفرما";
+      showToast("پیام جدید از " + nm);
+    }
+    // v81: remember the inputs so the next open paints instantly —
+    // the preview stores NO photo bytes (v87 rule: they made the
+    // list read heavy for nothing; the preview only needs the body).
+    try {
+      var prev = (loadCache() || {}).unread || {};
+      var next = {};
+      Object.keys(prev).forEach(function (k) { next[k] = prev[k]; });
+      var old = prev[appId] || {};
+      next[appId] = { msg: m.id || 0, status: app.status || old.status || "pending", preview: { id: m.id || 0, body: m.body || "", image: "", sender_id: m.sender_id, created_at: m.created_at || "" } };
+      updateCache({ unread: next });
+    } catch (e) {}
+  }
+  paintUnread();
+  return true;
+}
+function startListRealtime() {
+  if (state.listRtSocket || state.listRtStatus === "connecting" || state.listRtStatus === "on") return;
+  stopListRealtime();
+  // Test hook (also the only trace in mock mode): the exact
+  // subscription this list would open — topic, no per-app filter.
+  state.listRtDebug = { topic: LIST_RT_TOPIC, filter: "application_id=*" };
+  if (MOCK || typeof WebSocket === "undefined") { state.listRtStatus = "off"; return; }
+  function connect() {
+    if (state.listRtSocket) return; // already connected/connecting — render() never stops this socket
+    state.listRtStatus = "connecting";
+    var ws;
+    try { ws = new WebSocket(rtWsUrl()); } catch (e) { state.listRtStatus = "unavailable"; scheduleRetry(); return; }
+    state.listRtSocket = ws;
+    var ref = 1;
+    var joined = false;
+    // v78: a socket stuck in CONNECTING (flaky network — no open, no
+    // close) used to hang forever with no retry. Close it after 10s so
+    // dead() fires and the next attempt starts.
+    var openTimer = setTimeout(function () { try { ws.close(); } catch (e) {} }, 10000);
+    ws.onopen = function () {
+      clearTimeout(openTimer);
+      try {
+        ws.send(JSON.stringify({ topic: LIST_RT_TOPIC, event: "phx_join", payload: { config: { broadcast: { self: false }, presence: { key: "" }, postgres_changes: [{ event: "INSERT", schema: "public", table: "messages" }] } }, ref: String(ref++) }));
+      } catch (e) {}
+    };
+    ws.onmessage = function (ev) {
+      var msg = null;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (msg.event === "phx_reply") {
+        if (msg.payload && msg.payload.status === "ok") {
+          if (!joined) {
+            joined = true;
+            state.listRtStatus = "on";
+            state.listRtTimer = setInterval(function () {
+              try { ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: String(ref++) })); } catch (e) {}
+            }, 25000);
+          }
+        } else if (!joined) {
+          // Join rejected (e.g. Realtime off for the table) — close so
+          // the reconnect below can retry, then give up to the poll.
+          try { ws.close(); } catch (e) {}
+        }
+      } else if (msg.event === "postgres_changes" && msg.payload && msg.payload.data && msg.payload.data.type === "INSERT") {
+        listRtOnInsert(msg.payload.data.record);
+      }
+    };
+    function scheduleRetry() {
+      if (state.listRtRetry) return;
+      state.listRtRetry = setTimeout(function () { state.listRtRetry = null; connect(); }, 5000);
+    }
+    function dead() {
+      clearTimeout(openTimer);
+      if (state.listRtSocket !== ws) return;
+      state.listRtSocket = null;
+      if (state.listRtTimer) { clearInterval(state.listRtTimer); state.listRtTimer = null; }
+      // v78, list edition: keep retrying for as long as the app is
+      // open. The 10s REST poll keeps working underneath as fallback.
+      state.listRtStatus = "connecting";
+      scheduleRetry();
+    }
+    ws.onclose = dead;
+    ws.onerror = function () { /* onclose follows; dead() handles it */ };
+  }
+  connect();
+}
 /* v56: one-message rule — a freelancer may send only the application
    (their first message) until the employer answers it, either with a
    chat reply or by accepting/rejecting the request. Until then the
@@ -2986,7 +3124,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v87 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v88 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -3036,12 +3174,16 @@ async function switchTab(tab) {
   // v72: the unread badge stays live while the app is open (10s
   // refresh of the my-apps list, v76: was 20s) and is computed once at
   // boot so the tab count is right even before the tab is visited.
+  // v88: the list Realtime socket pushes new-message dots + toasts
+  // instantly — the 10s poll alone was too slow to win the race
+  // against a tap on the row (see startListRealtime).
   startListPolling();
+  startListRealtime();
   refreshMyApps().catch(function () {});
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
