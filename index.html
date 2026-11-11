@@ -424,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v80</span>
+<span class="app-version" id="app-version">v81</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -970,6 +970,7 @@ async function loadMyApplications() {
       const j = MOCK_JOBS.find(function (x) { return x.id === a.job_id; });
       if (j) { a.job_title = j.title; a.job_employer = j.employer_name; a.job_employer_photo = j.employer_photo || ""; }
     });
+    updateCache({ mine: state.myApplications }); // v81: instant first paint next open
     return;
   }
   state.myApplications = await sbSelect("applications", { select: "*", freelancer_id: "eq." + myId, order: "created_at.desc" }) || [];
@@ -987,6 +988,7 @@ async function loadMyApplications() {
       });
     } catch (e) {}
   }
+  updateCache({ mine: state.myApplications }); // v81: instant first paint next open
 }
 async function loadMyJobs() {
   const myId = me().id;
@@ -1029,6 +1031,7 @@ async function loadReceivedApplications() {
   });
   all.sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
   state.receivedApps = all;
+  updateCache({ received: state.receivedApps }); // v81: instant first paint next open
 }
 async function findJob(jobId) {
   if (state.jobById[jobId]) return state.jobById[jobId];
@@ -1412,6 +1415,25 @@ function getReadState() {
 function saveReadState(r) {
   try { store.set(READ_KEY, JSON.stringify(r || {})); } catch (e) {}
 }
+/* v81: instant first paint — the list + dots used to wait behind two
+   sequential Supabase reads (apps, then messages) on a slow
+   connection: a spinner, then a dotless list, then the dots seconds
+   later. The last-known list + unread inputs are now cached in
+   localStorage (per user id) and painted instantly on boot; the
+   network refresh underneath corrects anything stale. Entries older
+   than 7 days are ignored. */
+function cacheKey() { var id = 0; try { id = me().id || 0; } catch (e) {} return "yt_cache" + (id ? "_" + id : ""); }
+function loadCache() { try { return JSON.parse(store.get(cacheKey()) || "null") || null; } catch (e) { return null; } }
+function updateCache(patch) {
+  try {
+    const cur = loadCache() || {};
+    const next = {};
+    Object.keys(cur).forEach(function (k) { next[k] = cur[k]; });
+    Object.keys(patch).forEach(function (k) { next[k] = patch[k]; });
+    next.at = Date.now();
+    store.set(cacheKey(), JSON.stringify(next));
+  } catch (e) {}
+}
 async function latestOtherMessages(appIds) {
   // v73: ONE query for all rows instead of one GET per application —
   // each GET costs ~0.7s, so 5 rows used to add ~3.5s before the dots
@@ -1488,7 +1510,67 @@ async function loadUnread(apps, employerSide) {
     // v79: same for previews — state.latestMsg keeps its last value.
   }
   state.unread = out;
+  // v81: remember the inputs the dots were computed from, so the next
+  // open can paint them instantly (see seedFromCache). Statuses are
+  // fresh from the apps list even when the messages read failed; the
+  // message ids + previews only update when the read succeeded, so a
+  // failed read never invents or erases a dot.
+  try {
+    const prev = (loadCache() || {}).unread || {};
+    const next = {};
+    Object.keys(prev).forEach(function (k) { next[k] = prev[k]; });
+    apps.forEach(function (a) {
+      const old = prev[a.id] || {};
+      const m = latest ? latest.other[a.id] : null;
+      const anyM = latest ? latest.any[a.id] : null;
+      next[a.id] = {
+        msg: latest ? (m ? (m.id || 0) : 0) : (old.msg || 0),
+        status: a.status || old.status || "pending",
+        preview: latest ? (anyM ? { id: anyM.id || 0, body: anyM.body || "", image: anyM.image || "" } : null) : (old.preview || null)
+      };
+    });
+    updateCache({ unread: next });
+  } catch (e) {}
   return out;
+}
+/* v81: paint the list + dots + row previews instantly from the last
+   session's cache. Only fills EMPTY in-memory state (a fresh boot);
+   the network refresh underneath corrects anything stale. */
+function seedFromCache() {
+  try {
+    if (state.myApplications.length || state.receivedApps.length) return;
+    const c = loadCache();
+    if (!c || !c.at || (Date.now() - c.at) > 7 * 24 * 3600 * 1000) return;
+    if (c.mine && c.mine.length) state.myApplications = c.mine.slice();
+    if (c.received && c.received.length) state.receivedApps = c.received.slice();
+    const u = c.unread || {};
+    const read = getReadState();
+    const mineIds = {};
+    state.myApplications.forEach(function (a) { mineIds[a.id] = true; });
+    const out = {};
+    const latest = {};
+    const done = {};
+    state.myApplications.concat(state.receivedApps).forEach(function (a) {
+      if (done[a.id]) return;
+      done[a.id] = true;
+      const employerSide = !mineIds[a.id];
+      const r = read[a.id] || {};
+      const e = u[a.id] || {};
+      let unread = false;
+      if (!r.seen) {
+        if (employerSide) unread = true;
+        else if (a.status && a.status !== "pending") unread = true;
+      } else if (r.status && a.status && r.status !== a.status && a.status !== "pending") {
+        unread = true;
+      }
+      if (!unread && e.msg && (!r.msgId || e.msg > r.msgId)) unread = true;
+      if (!unread && e.status && r.status && e.status !== r.status && e.status !== "pending") unread = true;
+      out[a.id] = unread;
+      if (e.preview) latest[a.id] = e.preview;
+    });
+    state.unread = out;
+    state.latestMsg = latest;
+  } catch (e) {}
 }
 function markRead(appId) {
   const read = getReadState();
@@ -2638,7 +2720,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v80 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v81 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2668,6 +2750,10 @@ async function switchTab(tab) {
     else if (dj) { preload.then(function () { openJobDetail(dj); }); }
     else switchTab(homeTab());
   }
+  // v81: paint the list + dots instantly from the last session's cache
+  // (slow connections showed a spinner, then a dotless list, then the
+  // dots seconds later) — the network refresh runs underneath.
+  seedFromCache();
   if (getRole()) { finishBoot(); syncRoleFromCloud(); }
   else if (tg && tg.CloudStorage && tg.CloudStorage.getItem) {
     // No local role — the WebView may have dropped localStorage (v80).
@@ -2689,7 +2775,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
