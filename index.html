@@ -424,7 +424,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v79</span>
+<span class="app-version" id="app-version">v80</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -512,7 +512,12 @@ function isAdmin() { return MOCK || (me() && me().id === ADMIN_ID); }
    (Telegram start_param / the bot's src= link parameter) and a choice
    between employer and freelancer. The choice is remembered in
    localStorage; either side can switch from the profile / my-jobs screen.
-   localStorage is wrapped — file:// and old WebViews may throw. */
+   localStorage is wrapped — file:// and old WebViews may throw.
+   v80: localStorage alone is NOT enough — Telegram's WebView can drop
+   it between sessions, so a role change vanished on close + reopen.
+   The role is therefore ALSO written to Telegram's CloudStorage
+   (per-user, per-bot, server-side) and restored from it on boot;
+   localStorage stays as the fast local mirror. */
 const ROLE_KEY = "yt_role";
 const PROFILE_KEY = "yt_profile";
 const store = {
@@ -521,6 +526,24 @@ const store = {
   set: function (k, v) { try { window.localStorage.setItem(k, v); } catch (e) { (this._mem = this._mem || {})[k] = v; } },
   del: function (k) { try { window.localStorage.removeItem(k); } catch (e) { if (this._mem) delete this._mem[k]; } }
 };
+/* v80: CloudStorage helpers. getItem's callback is (error, value) on
+   success and (error) on failure — accept either shape, never throw,
+   and report "unavailable" (false) when there is no Telegram library. */
+function cloudGet(key, cb) {
+  try {
+    if (tg && tg.CloudStorage && tg.CloudStorage.getItem) {
+      tg.CloudStorage.getItem(key, function (err, v) {
+        var val = (typeof v === "string") ? v : ((typeof err === "string") ? err : null);
+        cb(val);
+      });
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+function cloudSet(key, val) {
+  try { if (tg && tg.CloudStorage && tg.CloudStorage.setItem) tg.CloudStorage.setItem(key, val, function () {}); } catch (e) {}
+}
 function getRole() {
   const r = store.get(ROLE_KEY);
   return (r === "employer" || r === "freelancer") ? r : null;
@@ -528,7 +551,23 @@ function getRole() {
 function setRole(r) {
   if (r !== "employer" && r !== "freelancer") return;
   store.set(ROLE_KEY, r);
+  cloudSet(ROLE_KEY, r); // v80: durable copy in Telegram CloudStorage
   buildTabs();
+}
+/* v80: background reconciliation — if the cloud holds a different role
+   than localStorage (local was wiped, or the role changed on another
+   device), adopt the cloud one. Only re-renders when still on the
+   landing view, so an in-progress navigation is never yanked away. */
+function syncRoleFromCloud() {
+  var local = getRole();
+  if (!local) return;
+  cloudGet(ROLE_KEY, function (cr) {
+    if ((cr === "employer" || cr === "freelancer") && cr !== getRole()) {
+      var wasHome = (state.view.name === homeTab());
+      store.set(ROLE_KEY, cr);
+      if (wasHome) { buildTabs(); switchTab(homeTab()); }
+    }
+  });
 }
 function homeTab() {
   if (getRole() === "freelancer") return "my-apps";
@@ -2599,7 +2638,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v79 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v80 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -2623,9 +2662,25 @@ async function switchTab(tab) {
   // Preload my applications so job details can show "already applied".
   const preload = loadMyApplications().catch(function () {});
   const dj = deepJobId();
-  if (!getRole()) { state.view = { name: "welcome" }; render(); }
-  else if (dj) { preload.then(function () { openJobDetail(dj); }); }
-  else switchTab(homeTab());
+  // v80: land in the role's home (or the deep-linked ad, or welcome).
+  function finishBoot() {
+    if (!getRole()) { state.view = { name: "welcome" }; render(); }
+    else if (dj) { preload.then(function () { openJobDetail(dj); }); }
+    else switchTab(homeTab());
+  }
+  if (getRole()) { finishBoot(); syncRoleFromCloud(); }
+  else if (tg && tg.CloudStorage && tg.CloudStorage.getItem) {
+    // No local role — the WebView may have dropped localStorage (v80).
+    // Ask the cloud first; never wait more than 2s for it.
+    var bootDone = false;
+    var bootTimer = setTimeout(function () { if (!bootDone) { bootDone = true; finishBoot(); } }, 2000);
+    cloudGet(ROLE_KEY, function (cr) {
+      if (bootDone) return;
+      bootDone = true; clearTimeout(bootTimer);
+      if (cr === "employer" || cr === "freelancer") store.set(ROLE_KEY, cr);
+      finishBoot();
+    });
+  } else finishBoot();
   // v72: the unread badge stays live while the app is open (10s
   // refresh of the my-apps list, v76: was 20s) and is computed once at
   // boot so the tab count is right even before the tab is visited.
@@ -2634,7 +2689,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
