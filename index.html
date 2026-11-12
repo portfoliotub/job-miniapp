@@ -494,7 +494,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v102</span>
+<span class="app-version" id="app-version">v103</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -754,6 +754,23 @@ function getProfile() {
 function saveProfile(p) {
   try { store.set(profileKey(), JSON.stringify(p || {})); } catch (e) {}
 }
+/* v103: the employer's profile photo, stored PER Telegram account like
+   the freelancer profile (v95 — localStorage is shared across accounts
+   on one device). A plain data-URL string, NOT an object: "" = no
+   manual photo (the Telegram photo from the employer's jobs shows
+   instead, or the letter avatar). It rides on NEW job posts as
+   employer_photo (submitPostJob + mockCreateJob) so freelancers see it
+   on the ad; the bot's backfill only fills NULL/"" rows (v89), so a
+   manual photo is never overwritten. Old ads keep the photo they were
+   posted with — same snapshot rule as the freelancer side. */
+const EMP_PHOTO_KEY_PREFIX = "yt_emp_photo_";
+function empPhotoKey() { return EMP_PHOTO_KEY_PREFIX + (me() ? me().id : "anon"); }
+function getEmployerPhoto() {
+  try { return store.get(empPhotoKey()) || ""; } catch (e) { return ""; }
+}
+function saveEmployerPhoto(dataUrl) {
+  try { store.set(empPhotoKey(), dataUrl || ""); } catch (e) {}
+}
 
 /* ================= mock data (preview only) ================= */
 const MOCK_JOBS = [
@@ -981,6 +998,32 @@ function handleProfilePhotoFile(file) {
       canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
       saveProfile(Object.assign({}, getProfile(), { photo: canvas.toDataURL("image/jpeg", 0.8) }));
       if (document.getElementById("profile-form")) renderProfile();
+      showToast("عکس پروفایل ذخیره شد ✓");
+    };
+    img.onerror = function () { showToast("خواندن عکس ممکن نشد"); };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+/* v103: the employer's profile photo — same rules as the freelancer
+   photo (image only, 5 MB source cap, downscaled to 1024px JPEG), but
+   it saves straight to its own per-user key (no form to submit) and
+   re-renders the employer profile on the spot. */
+function handleEmployerPhotoFile(file) {
+  if (!file) return;
+  if (file.type.indexOf("image/") !== 0) { showToast("فایل عکس انتخاب کنید"); return; }
+  if (file.size > MAX_PHOTO_BYTES) { showToast("حجم عکس پروفایل نباید بیشتر از ۵ مگابایت باشد"); return; }
+  const reader = new FileReader();
+  reader.onload = function () {
+    const img = new Image();
+    img.onload = function () {
+      const scale = Math.min(1, 1024 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      saveEmployerPhoto(canvas.toDataURL("image/jpeg", 0.8));
+      if (state.view.name === "profile") render();
       showToast("عکس پروفایل ذخیره شد ✓");
     };
     img.onerror = function () { showToast("خواندن عکس ممکن نشد"); };
@@ -1248,8 +1291,9 @@ function sendToBot(payload, mockApply) {
 }
 function mockCreateJob(p) {
   const id = Math.max.apply(null, MOCK_JOBS.map(function (j) { return j.id; }).concat([0])) + 1;
+  const empPhoto = getEmployerPhoto() || me().photo || ""; // v103: a new ad carries the employer's profile photo
   const job = {
-    id: id, employer_id: me().id, employer_name: me().name,
+    id: id, employer_id: me().id, employer_name: me().name, employer_photo: empPhoto,
     title: p.title, category: p.category, budget: p.budget || "",
     deadline: p.deadline || "", work_type: p.work_type || "دورکاری", location: p.location || "",
     description: p.description || "",
@@ -1266,6 +1310,8 @@ function mockUpdateJob(id, p) {
   job.title = p.title; job.category = p.category; job.budget = p.budget || "";
   job.deadline = p.deadline || ""; job.work_type = p.work_type || "دورکاری";
   job.location = p.location || ""; job.description = p.description || "";
+  const empPhoto = getEmployerPhoto() || me().photo || ""; // v103
+  if (empPhoto) job.employer_photo = empPhoto;
   if (job.status === "rejected") job.status = "pending";
 }
 function mockApply(p) {
@@ -1549,12 +1595,16 @@ async function submitPostJob(ev) {
     // v89: never PATCH employer_photo to "" — that would wipe a
     // backfilled photo (the backfill only matches NULL, so it could
     // never restore it). Only send the photo when one is actually set.
+    // v103: the employer's manually-set profile photo counts too (the
+    // Telegram photo is "" in initData, so without it an edit could
+    // never carry a photo at all).
     const update = {
       title: payload.title, category: payload.category, budget: payload.budget,
       deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
       description: payload.description
     };
-    if (me().photo) update.employer_photo = me().photo;
+    const empPhotoEdit = getEmployerPhoto() || me().photo || "";
+    if (empPhotoEdit) update.employer_photo = empPhotoEdit;
     if (wasRejected) update.status = "pending";
     if (MOCK) {
       mockUpdateJob(editingId, payload);
@@ -1591,13 +1641,16 @@ async function submitPostJob(ev) {
     // me().photo is "" in Telegram (initData has no photo_url), and
     // sending "" would leave the row unfixable — the bot backfill only
     // matches NULL. Omitting it leaves NULL so the backfill fills it.
+    // v103: the manually-set employer profile photo counts too, so a
+    // new ad carries it and freelancers see it.
     const jobRow = {
       employer_id: me().id, employer_name: me().name,
       title: payload.title, category: payload.category, budget: payload.budget,
       deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
       description: payload.description, status: "pending"
     };
-    if (me().photo) jobRow.employer_photo = me().photo;
+    const empPhotoNew = getEmployerPhoto() || me().photo || "";
+    if (empPhotoNew) jobRow.employer_photo = empPhotoNew;
     const row = await sbInsert("jobs", jobRow);
     // Best-effort: tell the bot so the admin is notified instantly.
     // If Telegram's send is broken, the bot's periodic check picks it up.
@@ -3448,6 +3501,9 @@ function showWelcome() {
    post-form pickers. */
 const COUNTRIES = ["افغانستان", "تاجیکستان", "ترکیه", "امارات متحده عربی", "عربستان سعودی", "قطر", "بحرین", "کویت", "عمان", "عراق", "سوریه", "لبنان", "اردن", "مصر", "مراکش", "الجزایر", "تونس", "لیبی", "سودان", "نیجریه", "کنیا", "اتیوپی", "آفریقای جنوبی", "آلمان", "فرانسه", "بریتانیا", "هلند", "بلژیک", "سوئیس", "اتریش", "سوئد", "نروژ", "دانمارک", "فنلاند", "اسپانیا", "ایتالیا", "پرتغال", "یونان", "لهستان", "جمهوری چک", "مجارستان", "رومانی", "اوکراین", "روسیه", "آمریکا", "کانادا", "مکزیک", "برزیل", "آرژانتین", "شیلی", "کلمبیا", "پرو", "استرالیا", "نیوزیلند", "ژاپن", "کره جنوبی", "چین", "هند", "پاکستان", "بنگلادش", "سریلانکا", "مالزی", "سنگاپور", "اندونزی", "تایلند", "ایران", "ویتنام", "فیلیپین", "سایر"];
 function renderProfile() {
+  // v103: the employer gets their own profile view (photo, stats, role
+  // switch) instead of the freelancer form.
+  if (getRole() === "employer") { renderEmployerProfile(); return; }
   const p = getProfile();
   const u = me();
   viewEl().innerHTML = "<h2>پروفایل فریلنسری</h2>" +
@@ -3508,6 +3564,76 @@ function renderProfile() {
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
 }
 
+/* v103: the employer's profile — photo, stats, role switch. The photo
+   is the manually-set one when there is one, else the Telegram photo
+   the bot backfilled onto the employer's ads, else the letter avatar.
+   The stats count the employer's own ads and the applications received
+   on them (loaded by the profile tab before this renders). No banner,
+   no skills/bio form — an employer has none of those; the photo is
+   what freelancers see on the ad, so it is the profile's main control. */
+function employerStats() {
+  const jobs = (state.myJobs || []).length;
+  let received = 0, accepted = 0;
+  (state.receivedApps || []).forEach(function (a) {
+    received++;
+    if (a.status === "accepted") accepted++;
+  });
+  return { jobs: jobs, received: received, accepted: accepted };
+}
+function employerProfilePhoto() {
+  const manual = getEmployerPhoto();
+  if (manual) return { photo: manual, source: "manual" };
+  const fromJob = (state.myJobs || []).find(function (j) { return j.employer_photo; });
+  if (fromJob) return { photo: fromJob.employer_photo, source: "telegram" };
+  return { photo: "", source: "none" };
+}
+function renderEmployerProfile() {
+  const u = me();
+  const ph = employerProfilePhoto();
+  const st = employerStats();
+  const hint = ph.source === "manual"
+    ? "عکس انتخابی تو — توی آگهی‌های جدیدت نشون داده می‌شه"
+    : ph.source === "telegram"
+    ? "عکس تلگرام تو — با مداد می‌تونی یه عکس دیگه انتخاب کنی"
+    : "هنوز عکس نداری — با مداد یه عکس انتخاب کن";
+  viewEl().innerHTML = "<h2>پروفایل کارفرما</h2>" +
+    '<div class="card profile-card">' +
+    '<div class="card-head"><div class="avatar-wrap">' + (ph.photo ? photoAvatarHtml(u.name, ph.photo) : '<div class="avatar avatar-empty" aria-label="بدون عکس">+</div>') +
+    '<button class="avatar-edit" id="emp-photo-edit" type="button" aria-label="ویرایش عکس پروفایل">' + ICONS.edit + '</button></div>' +
+    '<input type="file" id="emp-photo-file" accept="image/*" hidden>' +
+    '<div><div class="card-title">' + esc(u.name) + "</div>" +
+    '<div class="meta">' + (u.username ? "@" + esc(u.username) : "کارفرما") + "</div></div></div>" +
+    '<div class="meta" style="text-align:center;padding:0 14px 14px;">' + esc(hint) + "</div>" +
+    "</div>" +
+    '<div class="stats">' +
+    '<div class="stat"><div class="stat-label">آگهی‌ها</div><div class="stat-value">' + st.jobs + "</div></div>" +
+    '<div class="stat"><div class="stat-label">درخواست‌ها</div><div class="stat-value">' + st.received + "</div></div>" +
+    '<div class="stat"><div class="stat-label">قبول‌شده‌ها</div><div class="stat-value">' + st.accepted + "</div></div>" +
+    "</div>" +
+    '<div class="row-btns"><button class="btn" type="button" id="emp-my-jobs">آگهی‌های من</button>' +
+    '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
+    (ph.source === "manual" ? '<div class="row-btns"><button class="btn btn-ghost" type="button" id="emp-photo-remove">حذف عکس پروفایل</button></div>' : "");
+  // v26: a dead photo URL falls back to the letter avatar.
+  const photoImg = viewEl().querySelector(".avatar-photo");
+  if (photoImg) photoImg.addEventListener("error", function () { photoImg.remove(); });
+  // v83 pattern: the pencil is the only photo control — it opens the
+  // gallery directly, like the freelancer photo pencil.
+  document.getElementById("emp-photo-edit").addEventListener("click", function () {
+    document.getElementById("emp-photo-file").click();
+  });
+  document.getElementById("emp-photo-file").addEventListener("change", function (ev) {
+    handleEmployerPhotoFile(ev.target.files && ev.target.files[0]);
+  });
+  const removeBtn = document.getElementById("emp-photo-remove");
+  if (removeBtn) removeBtn.addEventListener("click", function () {
+    saveEmployerPhoto("");
+    render();
+    showToast("عکس پروفایل حذف شد");
+  });
+  document.getElementById("emp-my-jobs").addEventListener("click", function () { switchTab("my-jobs"); });
+  document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
+}
+
 function bindBack(tab) {
   const b = viewEl().querySelector("[data-back]");
   if (b) b.addEventListener("click", function () { switchTab(tab); });
@@ -3530,8 +3656,9 @@ function syncTgBackButton() {
 
 /* ================= tabs =================
    v46: the jobs tab is gone — no job browsing anywhere. Employers (admin
-   included) see 3 tabs with Post Ad in the middle; the admin moderation
-   queue moved into my-jobs. */
+   included) see 4 tabs, with Post Ad second and the profile last; the
+   admin moderation queue moved into my-jobs. v103: the employer gets
+   the profile tab too (photo, stats, role switch). */
 const TAB_DEFS = {
   "post": { label: "ثبت آگهی", tile: "tile-green", icon: "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>" },
   "my-apps": { label: "درخواست‌های من", tile: "tile-purple", icon: "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z\"/></svg>" },
@@ -3540,10 +3667,11 @@ const TAB_DEFS = {
 };
 /* Tabs depend on the chosen role. Freelancers (v23) see only their
    applications + profile — no job browsing; employers (admin included)
-   see my-applications + post + my-jobs, post in the middle. */
+   see my-applications + post + my-jobs + profile, post second and the
+   profile last (v103). */
 function tabsForRole() {
   if (getRole() === "freelancer") return ["my-apps", "profile"];
-  return ["my-apps", "post", "my-jobs"]; // post in the middle
+  return ["my-apps", "post", "my-jobs", "profile"]; // v103: profile last
 }
 function buildTabs() {
   const tabs = tabsForRole();
@@ -3606,7 +3734,7 @@ async function switchTab(tab) {
   if (["post", "my-apps", "my-jobs", "profile"].indexOf(tab) === -1) tab = homeTab();
   const role = getRole();
   if ((tab === "post" || tab === "my-jobs") && role === "freelancer" && !isAdmin()) tab = "my-apps";
-  if (tab === "profile" && role !== "freelancer") tab = homeTab();
+  // v103: the profile tab is open to both roles now (was freelancer-only) — the employer profile lives there too.
   state.editingJobId = null; // v62: any tab switch cancels an edit
   state.tab = tab;
   state.error = "";
@@ -3643,7 +3771,12 @@ async function switchTab(tab) {
     render();
   } else if (tab === "profile") {
     state.view = { name: "profile" };
-    try { await loadMyApplications(); } catch (e) {}
+    try {
+      // v103: the employer profile shows counts, so its lists must be
+      // loaded first (same loads the my-apps tab already does).
+      if (getRole() === "employer") await loadReceivedApplications();
+      else await loadMyApplications();
+    } catch (e) {}
     render();
   }
 }
@@ -3668,7 +3801,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v102 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v103 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -3733,7 +3866,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
