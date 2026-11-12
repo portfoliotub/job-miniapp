@@ -492,7 +492,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v100</span>
+<span class="app-version" id="app-version">v101</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -784,6 +784,7 @@ const state = {
   jobApplications: {}, // jobId -> [applications]
   chatMessages: {}, // applicationId -> [messages]
   chatPartial: {}, // v86: applicationId -> the thread holds only its tail/seed so far, the full fetch is still owed
+  chatBackfilling: {}, // v101: applicationId -> the full-thread backfill is in flight (one at a time)
   chatTimer: null, // polling interval while a chat is open
   rtSocket: null, // v77: Realtime WebSocket while a chat is open
   rtTimer: null, // v77: Realtime heartbeat interval
@@ -2346,36 +2347,96 @@ function seedAppFromCache(appId) {
     return c.app;
   } catch (e) { return null; }
 }
+/* v101: the hot chat reads skip the base64 image column (v87 rule —
+   the photo bytes made every read heavy). Text + reply_to is all the
+   live path needs; photo bytes are patched in lazily (below). */
+const CHAT_MSG_COLS = "id,application_id,sender_id,sender_name,body,reply_to,created_at";
+/* v101: merge a freshly fetched set into the thread already on screen.
+   Current rows win on a duplicate id — they may be newer than the
+   fetched snapshot (a delta appended them after the fetch started),
+   so replacing would drop them until the next tick. */
+function mergeChatRows(cur, rows) {
+  const byId = {};
+  (rows || []).forEach(function (m) { if (m && m.id != null) byId[m.id] = m; });
+  (cur || []).forEach(function (m) { if (m && m.id != null) byId[m.id] = m; });
+  return Object.keys(byId).map(function (k) { return byId[k]; }).sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+}
+/* v101: a photo message arrives without its bytes (see CHAT_MSG_COLS).
+   Fetch them in one small read, only for rows with no body and no
+   image yet. Best effort — a failed patch leaves the row pending and
+   the next tick retries it. */
+async function patchChatPhotos(appId) {
+  if (MOCK) return;
+  try {
+    const list = state.chatMessages[appId] || [];
+    const ids = list.filter(function (m) { return m && !m.body && !m.image && m.id; }).map(function (m) { return m.id; });
+    if (!ids.length) return;
+    const rows = await sbSelect("messages", { select: "id,image", id: "in.(" + ids.join(",") + ")" }) || [];
+    const byId = {};
+    rows.forEach(function (r) { if (r && r.id != null) byId[r.id] = r.image; });
+    list.forEach(function (m) { if (byId[m.id]) m.image = byId[m.id]; });
+    if (state.view.name === "chat" && state.view.applicationId === appId) refreshChatMessages();
+  } catch (e) {}
+}
+/* v101: the full-thread backfill — runs in the background once the
+   tail has painted, and merges instead of replacing, so a message
+   that arrived via the delta in the meantime is never dropped by the
+   overwrite. On failure the thread stays partial and a later tick
+   retries; the delta keeps delivering new messages meanwhile. */
+async function backfillChat(appId) {
+  if (MOCK || state.chatBackfilling[appId] || !state.chatPartial[appId]) return;
+  state.chatBackfilling[appId] = true;
+  try {
+    const rows = await sbSelect("messages", { select: "*", application_id: "eq." + appId, order: "created_at.asc" }) || [];
+    state.chatMessages[appId] = mergeChatRows(state.chatMessages[appId] || [], rows);
+    state.chatPartial[appId] = false;
+    saveChatCache(appId); // v82 (only the complete thread is cached)
+    if (state.view.name === "chat" && state.view.applicationId === appId) refreshChatMessages();
+  } catch (e) { /* stays partial — see above */ }
+  finally { state.chatBackfilling[appId] = false; }
+}
 async function loadChatMessages(appId) {
   if (MOCK) {
     state.chatMessages[appId] = MOCK_MESSAGES.filter(function (m) { return m.application_id === appId; })
       .slice().sort(function (a, b) { return a.created_at.localeCompare(b.created_at); });
+    state.chatPartial[appId] = false; // the mock thread is always complete
     saveChatCache(appId); // v82
     return;
   }
   // v73: a poll tick fetches only messages newer than the ones already
   // shown (ids grow monotonically) instead of the whole thread — the
   // full re-read every tick was the heaviest chat cost.
+  // v101: the delta runs on a PARTIAL thread too. The tail/seed's
+  // maxId is the server's true max, so id > maxId is always correct —
+  // the old partial guard forced every tick through the slow tail+full
+  // reads, so a message arriving while the backfill was still loading
+  // (up to a minute on a slow connection) never appeared until the
+  // backfill finished — or never, if it kept failing (the 2026-11-12
+  // 13:44 «سلام» reply). The full fetch is now a background backfill.
   const list = state.chatMessages[appId];
-  if (list && list.length && !state.chatPartial[appId]) {
+  if (list && list.length) {
     const maxId = Math.max.apply(null, list.map(function (m) { return m.id || 0; }));
-    const rows = await sbSelect("messages", { select: "*", application_id: "eq." + appId, id: "gt." + maxId, order: "created_at.asc" }) || [];
-    if (rows.length) { state.chatMessages[appId] = list.concat(rows); saveChatCache(appId); } // v82
+    const rows = await sbSelect("messages", { select: CHAT_MSG_COLS, application_id: "eq." + appId, id: "gt." + maxId, order: "created_at.asc" }) || [];
+    if (rows.length) {
+      state.chatMessages[appId] = mergeChatRows(list, rows);
+      if (!state.chatPartial[appId]) saveChatCache(appId); // v82 (never cache a partial thread)
+    }
+    patchChatPhotos(appId);
+    if (state.chatPartial[appId]) backfillChat(appId);
     return;
   }
-  // v86: TAIL FIRST — the last 10 messages are a ~10 KB read, the whole
-  // thread is ~130 KB. Paint the tail (the last received message is in
-  // it) the moment it lands, then fetch the full thread underneath and
-  // replace. Sorted + sliced defensively: the server already returns
-  // the last 10 in id.desc, but a stub/proxy may ignore limit/order.
-  const tail = await sbSelect("messages", { select: "*", application_id: "eq." + appId, order: "id.desc", limit: "10" }) || [];
+  // v86: TAIL FIRST — the last 10 messages are a light read. Paint the
+  // tail (the last received message is in it) the moment it lands; the
+  // full thread backfills underneath (fire-and-forget) and merges.
+  // Sorted + sliced defensively: the server already returns the last
+  // 10 in id.desc, but a stub/proxy may ignore limit/order.
+  const tail = await sbSelect("messages", { select: CHAT_MSG_COLS, application_id: "eq." + appId, order: "id.desc", limit: "10" }) || [];
   tail.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
   state.chatMessages[appId] = tail.slice(-10);
   state.chatPartial[appId] = true;
   if (state.view.name === "chat" && state.view.applicationId === appId) { state.loading = false; refreshChatMessages(); }
-  state.chatMessages[appId] = await sbSelect("messages", { select: "*", application_id: "eq." + appId, order: "created_at.asc" }) || [];
-  state.chatPartial[appId] = false;
-  saveChatCache(appId); // v82 (only the complete thread is cached)
+  patchChatPhotos(appId);
+  backfillChat(appId);
 }
 function fmtTime(iso) {
   if (!iso) return "";
@@ -2902,10 +2963,22 @@ async function openChat(appId, back) {
   // state.latestMsg (zero network) while the tail fetch runs below.
   state.loading = !(seedChatFromCache(app.id) || seedTailFromLatest(app.id));
   render();
+  // v101: live from the first paint — start the poll and the Realtime
+  // socket NOW, not after the thread load finishes. On a slow
+  // connection the load can take a minute, and until it does the user
+  // sees nothing new arrive (the 2026-11-12 13:44 «سلام» reply). The
+  // second render() below stops them again, and the calls after the
+  // load restart them.
+  startChatPolling(app.id);
+  startChatRealtime(app.id);
   // v73: the job and the thread load in parallel instead of one after
   // the other — opening a chat used to cost 2–3 sequential round trips.
   // v99: "loaded" tracks whether the thread actually arrived — the
   // unread mark clears only once the message has been seen (below).
+  // v101: keep the poll tick from racing this load (it calls
+  // loadChatMessages too) — the socket above still delivers live
+  // updates while the load runs.
+  state.chatLoading = true;
   let loaded = false;
   try {
     await Promise.all([
@@ -2922,6 +2995,7 @@ async function openChat(appId, back) {
     state.loading = false;
     loaded = true;
   } catch (e) { state.view.job = job; state.loading = false; state.error = "خطا در بارگذاری پیام‌ها: " + e.message; }
+  state.chatLoading = false; // v101: the poll may run again now
   render();
   // v99 (user order 2026-11-12): the unread mark must not clear until
   // the message has actually been read. The old code marked read here
@@ -3510,7 +3584,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v100 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v101 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -3575,7 +3649,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
