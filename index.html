@@ -235,8 +235,15 @@
     border: 1px solid var(--separator);
   }
   .btn-danger { background: transparent; color: var(--destructive); border: 1px solid var(--separator); }
-  .row-btns { display: flex; gap: 8px; margin-top: 12px; }
-  .row-btns .btn { margin: 0; flex: 1; }
+  /* v104: the row used to run edge-to-edge (no side margins at all),
+     so on the phone the two big blue buttons looked like they had
+     escaped the frame — the cards beside them are inset 12px. The row
+     now has the same 12px side inset as the cards and the standalone
+     buttons, and its buttons can shrink below their content size
+     (min-width: 0) instead of forcing the row wider than the screen
+     on a narrow display or a large font. */
+  .row-btns { display: flex; gap: 8px; margin: 12px 12px 0; }
+  .row-btns .btn { margin: 0; flex: 1; min-width: 0; }
   .back { background: none; border: none; color: var(--link); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; padding: 10px 12px 0; }
   .sample-link { display: block; color: var(--link); text-decoration: none; font-size: 13.5px; word-break: break-all; }
   /* v41: per-application chat — employer ↔ freelancer. The chat page
@@ -494,7 +501,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v103</span>
+<span class="app-version" id="app-version">v104</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -3801,7 +3808,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v103 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v104 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
