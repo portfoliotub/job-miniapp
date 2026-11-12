@@ -79,8 +79,10 @@
   /* v26: real Telegram photo laid over the letter avatar (profile only). */
   .avatar-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
   /* v90: empty profile-photo slot in the form — no letter until the user
-     picks a photo (the letter stays the fallback in lists/chat). */
-  .avatar-empty { background: transparent; border: 2px dashed var(--hint); color: var(--hint); font-size: 26px; }
+     picks a photo (the letter stays the fallback in lists/chat).
+     v96: the empty slot gets a solid default colour (Telegram blue)
+     instead of a transparent dashed circle — user order 2026-11-12. */
+  .avatar-empty { background: #2481cc; color: #fff; font-size: 34px; }
   /* v27: freelancer profile banner, YouTube channel-art style. v28: the
      display ratio is YouTube's channel-art strip (2560×423), not 16:9 —
      16:9 was too tall; the upload size stays 2560×1440. v32: the banner's
@@ -88,7 +90,7 @@
      removed, only the pencil opens the gallery. */
   .banner-wrap { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 2560 / 423; background: linear-gradient(135deg, #2481cc 0%, #6ab3f0 55%, #9fd0f7 100%); }
   .banner-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .banner-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #fff; padding-bottom: 30px; }
+  .banner-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #fff; }
   .banner-empty .banner-title { font-weight: 700; font-size: 15px; line-height: 1.3; }
   .banner-empty .muted { color: rgba(255,255,255,.85); font-size: 13px; line-height: 1.3; }
   .banner-edit { position: absolute; left: 8px; bottom: 8px; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
@@ -98,14 +100,15 @@
   .avatar-wrap { position: relative; display: inline-block; flex: none; }
   .avatar-edit { position: absolute; left: -4px; bottom: -4px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
   /* v29: banner and profile are ONE card (YouTube channel style) — the
-     banner is the card's top, the avatar overlaps its bottom edge. v30:
-     avatar + name/ID are CENTRED (column layout) so the name sits below
-     the banner, not on it; the two stat boxes are removed. v32: the
-     banner editor is gone — tapping the banner does nothing; only the
-     pencil opens the gallery. */
+     banner is the card's top. v30: avatar + name/ID are CENTRED (column
+     layout) so the name sits below the banner, not on it; the two stat
+     boxes are removed. v32: the banner editor is gone — tapping the
+     banner does nothing; only the pencil opens the gallery. v96: the
+     avatar NO LONGER overlaps the banner (user order 2026-11-12) — it
+     sits fully below it, bigger (96px, same as the profile view). */
   .profile-card { padding: 0; overflow: hidden; }
-  .profile-card .card-head { flex-direction: column; align-items: center; text-align: center; padding: 0 14px; margin: -19px 0 13px; position: relative; }
-  .profile-card .avatar { box-shadow: 0 0 0 3px var(--bg); }
+  .profile-card .card-head { flex-direction: column; align-items: center; text-align: center; padding: 0 14px; margin: 14px 0 13px; position: relative; }
+  .profile-card .card-head .avatar { width: 96px; height: 96px; font-size: 38px; box-shadow: 0 0 0 3px var(--bg); }
   .job-row-text { flex: 1; min-width: 0; }
   .job-row-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .job-row-sub { font-size: 13.5px; color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -439,10 +442,10 @@
   .freelancer-profile .fp-label { font-size: 13px; font-weight: 700; color: var(--hint); margin: 14px 0 4px; }
   /* v60: the profile view mirrors the freelancer's own profile form
      card (YouTube channel style): banner as the card's top, avatar
-     overlapping its bottom edge, name centred below. */
+     fully below it (v96, same as the form), name centred below. */
   .freelancer-profile { padding: 0; overflow: hidden; }
   .freelancer-profile .fp-banner { border-radius: 0; margin-bottom: 0; }
-  .freelancer-profile .fp-head { margin: -19px 0 0; padding: 0 14px; position: relative; }
+  .freelancer-profile .fp-head { margin: 14px 0 0; padding: 0 14px; position: relative; }
   .freelancer-profile .fp-head .avatar { box-shadow: 0 0 0 3px var(--bg); }
   .freelancer-profile .fp-body { padding: 2px 14px 14px; }
   .freelancer-profile .fp-body > .muted { margin-top: 12px; }
@@ -455,7 +458,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v95</span>
+<span class="app-version" id="app-version">v96</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -3257,7 +3260,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v95 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v96 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
