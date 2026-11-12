@@ -458,7 +458,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v96</span>
+<span class="app-version" id="app-version">v97</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1918,7 +1918,7 @@ function renderMyApplications() {
         // the chat top (the full message sits in a box there).
         let h = '<div class="card clickable recv-card" data-recv-card="' + a.id + '">' +
           (state.unread[a.id] ? '<span class="unread-dot"></span>' : "") +
-          '<div class="card-head profile-link" data-profile="' + a.id + '">' + photoAvatarHtml(name, (a.freelancer_profile && a.freelancer_profile.photo) || "") + '<div class="card-title">' + esc(name) + "</div></div>" +
+          '<div class="card-head profile-link">' + photoAvatarHtml(name, (a.freelancer_profile && a.freelancer_profile.photo) || "") + '<div class="card-title">' + esc(name) + "</div></div>" +
           (a.message ? '<p class="desc recv-msg">' + esc((a.message || "").split("\n")[0]) + "</p>" : "");
         return h + "</div>";
       }).join("");
@@ -1931,15 +1931,15 @@ function renderMyApplications() {
         openChat(parseInt(el.getAttribute("data-recv-card"), 10), { tab: "my-apps" });
       });
     });
-    // v57: tapping the freelancer's avatar/name opens their profile
-    // (read-only). The head stops propagation so the row's chat
-    // handler does not fire as well.
-    viewEl().querySelectorAll("[data-recv-card] [data-profile]").forEach(function (el) {
-      el.addEventListener("click", function (ev) {
-        ev.stopPropagation();
-        openFreelancerProfile(parseInt(el.getAttribute("data-profile"), 10), { name: "my-apps" });
-      });
-    });
+    // v97 (user order 2026-11-12, from his screenshot): tapping the
+    // freelancer's avatar/name in the received list opens the CHAT,
+    // not the freelancer profile — the profile was one tap too far
+    // from the conversation the employer actually wants. There is no
+    // separate head handler anymore: the tap falls through to the
+    // row's chat handler above, so the whole card opens the chat.
+    // The freelancer profile is still reachable from the chat header
+    // (the .chat-req [data-profile] handler below). The freelancer
+    // side already worked this way (name tap opens the chat).
     return;
   }
   if (!state.myApplications.length) {
@@ -3260,7 +3260,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v96 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v97 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
