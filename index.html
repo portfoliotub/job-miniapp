@@ -458,7 +458,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v97</span>
+<span class="app-version" id="app-version">v98</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1845,6 +1845,7 @@ async function refreshUnread(full) {
   } catch (e) { return false; }
   await loadUnread(myAppsList(), myAppsEmployerSide());
   paintUnread();
+  rerenderMyAppsIfRowsChanged(); // v98: a newly answered row must appear, not wait for the next poll tick
   return true;
 }
 function myAppsSignature() {
@@ -1873,6 +1874,32 @@ function startListPolling() {
   state.listTimer = setInterval(function () { refreshMyApps().catch(function () {}); }, 10000);
 }
 
+/* v98: has the employer answered this application? Same definition
+   as the v56 one-message rule (chatLocked): the application was
+   accepted/rejected, or the employer wrote in the chat. state.latestMsg
+   holds only RECEIVED messages, so an unanswered request has no entry
+   there — and its row stays hidden from the freelancer's list. */
+function employerAnswered(a) {
+  if (a.status && a.status !== "pending") return true;
+  return !!(state.latestMsg && state.latestMsg[a.id]);
+}
+/* v98: the list hides unanswered freelancer requests, so a refresh
+   that newly answers one (an employer message, or a decision) must
+   re-render the list — paintUnread() alone only touches rows already
+   in the DOM, so without this the row would only show up at the next
+   poll tick. Re-render ONLY when the set of visible rows actually
+   changed, so ordinary ticks never lose scroll position. */
+function rerenderMyAppsIfRowsChanged() {
+  if (state.view.name !== "my-apps") return;
+  const want = (myAppsEmployerSide()
+    ? state.receivedApps.map(function (a) { return a.id; })
+    : state.myApplications.filter(employerAnswered).map(function (a) { return a.id; })
+  ).slice().sort(function (a, b) { return a - b; });
+  const have = Array.from(document.querySelectorAll("[data-app-card],[data-recv-card]")).map(function (el) {
+    return parseInt(el.getAttribute("data-app-card") || el.getAttribute("data-recv-card"), 10);
+  }).sort(function (a, b) { return a - b; });
+  if (JSON.stringify(want) !== JSON.stringify(have)) render();
+}
 function myAppPreviewText(a) {
   // v79: the freelancer row is a chat-list row — show the latest thread
   // message (first line; «📷 عکس» for a photo-only message) when the
@@ -1945,14 +1972,30 @@ function renderMyApplications() {
   if (!state.myApplications.length) {
     html += emptyState("هنوز درخواستی نفرستاده‌اید", "لینک آگهی را از کانال یا ربات باز کنید.");
   } else {
-    html += state.myApplications.map(function (a) {
-      // v55: per the user's screenshot — ALL requests render as chat-list
+    // v98 (user order 2026-11-12): until the employer answers a
+    // request, the employer's private chat must not appear on the
+    // freelancer's «درخواست‌های من» page at all — no row, no preview,
+    // no way in from the list. Only answered requests render (the
+    // filter runs at render time, so the cached first paint and the
+    // Realtime/poll refreshes all respect it, and the row appears the
+    // moment the employer replies). The employer side is untouched —
+    // the employer still sees every pending request immediately, or
+    // they could never answer one. When nothing is answered yet, the
+    // list says so plainly instead of pretending no request was sent.
+    const answered = state.myApplications.filter(employerAnswered);
+    if (!answered.length) {
+      html += emptyState("هنوز جوابی نیامده است", "درخواست‌هایت فرستاده شده؛ وقتی کارفرما جواب بده، چتش اینجا می‌آید.");
+    } else {
+      html += answered.map(function (a) {
+      // v55: per the user's screenshot — requests render as chat-list
       // rows, exactly like the employer's received rows (and the v54
       // answered rows): the employer's avatar + name + the first line of
-      // the employer's answer only. Answered: «درخواست شما قبول شد» /
-      // «رد شد»; not answered yet: «هنوز جواب نداده است». No badge, no
-      // price/date, no job title, and the big «چت با کارفرما» button is
-      // gone entirely — tapping the row opens the chat.
+      // the employer's answer only. v98: only ANSWERED requests reach
+      // this map at all — an unanswered one has no row, so the
+      // «هنوز جواب نداده است» fallback in myAppPreviewText is only a
+      // safety net now. No badge, no price/date, no job title, and the
+      // big «چت با کارفرما» button is gone entirely — tapping the row
+      // opens the chat.
       // v79: the "answer" is the latest thread message when the employer
       // has written in the chat (myAppPreviewText) — the status text
       // alone claimed «هنوز جواب نداده است» even after the employer
@@ -1966,6 +2009,7 @@ function renderMyApplications() {
         '<div class="card-head">' + photoAvatarHtml(empName, empPhoto) + '<div class="card-title">' + esc(empName) + "</div></div>" +
         '<p class="desc recv-msg">' + esc(myAppPreviewText(a)) + "</p></div>";
     }).join("");
+    }
   }
   // v24: no role switch here — it lives only in the freelancer profile.
   viewEl().innerHTML = html;
@@ -2545,6 +2589,7 @@ function listRtOnInsert(record) {
     } catch (e) {}
   }
   paintUnread();
+  rerenderMyAppsIfRowsChanged(); // v98: an employer reply makes the hidden row appear instantly, not at the next poll tick
   return true;
 }
 function startListRealtime() {
@@ -3260,7 +3305,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v97 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v98 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
