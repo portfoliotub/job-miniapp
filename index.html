@@ -458,7 +458,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v98</span>
+<span class="app-version" id="app-version">v99</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -2388,7 +2388,10 @@ function startChatPolling(appId) {
     // what made receiving feel slower.
     if (state.chatLoading) return;
     state.chatLoading = true;
-    loadChatMessages(appId).then(function () { refreshChatMessages(); applyChatLock(); markRead(appId); }).catch(function () {}).then(function () { state.chatLoading = false; });
+    loadChatMessages(appId).then(function () { refreshChatMessages(); applyChatLock(); if (state.view.name === "chat" && state.view.applicationId === appId) markRead(appId); }).catch(function () {}).then(function () { state.chatLoading = false; });
+    // v99: the fetch above may resolve after the user left the chat —
+    // the markRead inside its .then is now guarded by the same rule
+    // as openChat (still looking at this chat).
     // v73: the per-tick status re-read exists only for the one-message
     // rule — it matters only while the freelancer waits on a pending
     // decision. Employer side and decided chats skip the extra GET.
@@ -2740,6 +2743,9 @@ async function openChat(appId, back) {
   render();
   // v73: the job and the thread load in parallel instead of one after
   // the other — opening a chat used to cost 2–3 sequential round trips.
+  // v99: "loaded" tracks whether the thread actually arrived — the
+  // unread mark clears only once the message has been seen (below).
+  let loaded = false;
   try {
     await Promise.all([
       loadChatMessages(app.id),
@@ -2753,9 +2759,20 @@ async function openChat(appId, back) {
     ]);
     state.view.job = job;
     state.loading = false;
+    loaded = true;
   } catch (e) { state.view.job = job; state.loading = false; state.error = "خطا در بارگذاری پیام‌ها: " + e.message; }
   render();
-  markRead(app.id); // v72: opening the chat marks its messages as seen
+  // v99 (user order 2026-11-12): the unread mark must not clear until
+  // the message has actually been read. The old code marked read here
+  // unconditionally — if the user backed out while the thread was still
+  // loading (slow connection), or the load failed and the chat showed
+  // an error instead of the message, the dot vanished although nothing
+  // was ever seen. Mark read only when this chat is still the visible
+  // view AND the thread actually painted: the load succeeded, or a
+  // cached/seeded thread painted the latest message itself (v82/v86),
+  // which counts as seen. rtOnInsert already had this view guard.
+  if (state.view.name === "chat" && state.view.applicationId === app.id &&
+      (loaded || (state.chatMessages[app.id] || []).length)) markRead(app.id);
   startChatPolling(app.id);
   startChatRealtime(app.id);
 }
@@ -3305,7 +3322,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v98 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v99 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
