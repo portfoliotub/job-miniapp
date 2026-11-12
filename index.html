@@ -256,6 +256,7 @@
     max-width: 78%; padding: 9px 12px; border-radius: 14px;
     font-size: 14.5px; white-space: pre-wrap; word-break: break-word;
     box-shadow: 0 1px 2px rgba(0,0,0,0.06); background: var(--bg);
+    touch-action: pan-y; user-select: none; -webkit-user-select: none;
   }
   .msg.mine { align-self: flex-start; background: var(--link); color: #fff; border-bottom-right-radius: 4px; }
   .msg.theirs { align-self: flex-end; border-bottom-left-radius: 4px; }
@@ -293,6 +294,39 @@
   }
   .chat-composer.locked { opacity: .5; }
   .chat-composer.locked .chat-send { cursor: default; }
+  /* v100: reply to a message — the quoted block inside a bubble, the
+     reply bar above the composer, the long-press action sheet, and
+     the jump flash when a quote is tapped. The [hidden] global rule
+     (v44) keeps the flex reply bar / menu hidden until shown. */
+  .msg-quote {
+    border-inline-start: 3px solid var(--link);
+    background: rgba(0,0,0,0.06); border-radius: 8px;
+    padding: 6px 8px; margin-bottom: 6px; cursor: pointer;
+  }
+  .msg.mine .msg-quote { border-inline-start-color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.15); }
+  .msg-quote-name { font-size: 12.5px; font-weight: 700; color: var(--link); }
+  .msg.mine .msg-quote-name { color: rgba(255,255,255,0.9); }
+  .msg-quote-text { font-size: 13px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .msg-flash { outline: 2px solid var(--link); outline-offset: 2px; }
+  .chat-reply-bar {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    border-inline-start: 3px solid var(--link); padding-inline-start: 10px;
+  }
+  .chat-reply-text { flex: 1; min-width: 0; }
+  .chat-reply-name { font-size: 12.5px; font-weight: 700; color: var(--link); }
+  .chat-reply-body { font-size: 13px; color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-reply-bar button { background: none; border: none; color: var(--destructive); font: inherit; font-size: 15px; cursor: pointer; flex-shrink: 0; }
+  .msg-menu-backdrop { position: fixed; inset: 0; z-index: 25; background: rgba(0,0,0,0.3); }
+  .msg-menu {
+    position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 30;
+    background: var(--bg); border-radius: 14px; box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+    padding: 6px; display: flex; flex-direction: column;
+  }
+  .msg-menu button {
+    background: none; border: none; font: inherit; font-size: 15.5px; text-align: right;
+    padding: 12px 10px; border-radius: 10px; cursor: pointer;
+  }
+  .msg-menu button:active { background: var(--secondary-bg); }
   .empty { text-align: center; color: var(--hint); padding: 34px 10px; }
   .loading { text-align: center; color: var(--hint); padding: 30px 10px; }
   .error { color: var(--destructive); font-size: 13.5px; padding: 10px 0; }
@@ -458,7 +492,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v99</span>
+<span class="app-version" id="app-version">v100</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -767,6 +801,8 @@ const state = {
   notifiedMsg: {}, // v87: applicationId -> last message id a "new message" toast was shown for (in-memory; the toast fires once per message)
   listTimer: null, // v72: 10s refresh of the my-apps list + unread badge (v76: was 20s)
   chatImage: null, // pending photo (data URL) attached to the next message
+  replyTo: null, // v100: id of the message being replied to in the open chat (null = no reply)
+  menuMsgId: null, // v100: message the long-press menu is open for
   jobById: {},
   loading: false,
   error: "",
@@ -2353,6 +2389,28 @@ function fmtTime(iso) {
     return d.getFullYear() + "/" + p(d.getMonth() + 1) + "/" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
   } catch (e) { return ""; }
 }
+/* v100: reply — the quoted block at the top of a reply bubble. The
+   quoted message resolves from the loaded thread; if it is not there
+   (old thread, deleted message) the name falls back to «پیام» with
+   no text instead of breaking the render. */
+function findChatMsg(id) {
+  const list = state.chatMessages[state.view.applicationId] || [];
+  return list.find(function (m) { return m.id === id; }) || null;
+}
+function replyPreviewText(m) {
+  if (!m) return "پیام";
+  if (m.body) return m.body.length > 80 ? m.body.slice(0, 80) + "…" : m.body;
+  if (m.image) return "📷 عکس";
+  return "پیام";
+}
+function quoteHtml(m) {
+  if (!m.reply_to) return "";
+  const q = findChatMsg(m.reply_to);
+  const name = q ? (q.sender_id === me().id ? "شما" : (q.sender_name || "کاربر")) : "پیام";
+  const text = q ? replyPreviewText(q) : "";
+  return '<div class="msg-quote" data-jump="' + m.reply_to + '"><div class="msg-quote-name">' + esc(name) + "</div>" +
+    (text ? '<div class="msg-quote-text">' + esc(text) + "</div>" : "") + "</div>";
+}
 function chatMessagesHtml() {
   const list = state.chatMessages[state.view.applicationId] || [];
   if (!list.length) return '<div class="muted" style="text-align:center;padding:14px 0;">هنوز پیامی نیست — اولین پیام را بفرستید.</div>';
@@ -2362,7 +2420,7 @@ function chatMessagesHtml() {
     if (m.image) inner += '<img class="chat-img" src="' + esc(m.image) + '" alt="">';
     if (m.body) inner += "<div>" + esc(m.body) + "</div>";
     inner += '<div class="msg-time">' + fmtTime(m.created_at) + "</div>";
-    return '<div class="msg ' + (mine ? "mine" : "theirs") + '">' + inner + "</div>";
+    return '<div class="msg ' + (mine ? "mine" : "theirs") + '" data-msg-id="' + m.id + '">' + quoteHtml(m) + inner + "</div>";
   }).join("");
 }
 function refreshChatMessages() {
@@ -2373,8 +2431,110 @@ function refreshChatMessages() {
   box.querySelectorAll(".chat-img").forEach(function (img) {
     img.addEventListener("click", function () { img.classList.toggle("full"); });
   });
+  bindChatMsgGestures(box); // v100: swipe-left / long-press reply on each bubble
   const after = box.querySelectorAll(".msg").length;
   if (after > before) setTimeout(function () { window.scrollTo(0, document.body.scrollHeight); }, 50);
+}
+/* v100: reply to a message — swipe left on a bubble, or hold it
+   (long-press) / right-click for the reply menu. The reply bar above
+   the composer shows what is being answered; sending attaches
+   reply_to, and the bubble renders the quote (tap it to jump to the
+   original). */
+function paintReplyBar() {
+  const bar = document.getElementById("chat-reply-bar");
+  if (!bar) return;
+  const m = state.replyTo ? findChatMsg(state.replyTo) : null;
+  if (!m) { bar.hidden = true; return; }
+  bar.hidden = false;
+  document.getElementById("chat-reply-name").textContent = "در پاسخ به " + (m.sender_id === me().id ? "شما" : (m.sender_name || "کاربر"));
+  document.getElementById("chat-reply-body").textContent = replyPreviewText(m);
+}
+function startReply(msgId) {
+  if (state.view.name !== "chat") return;
+  // The one-message rule still applies: a locked composer cannot
+  // start a reply either.
+  if (chatLocked()) { showToast("تا وقتی کارفرما جواب نداده، نمی‌توانید پیام بفرستید."); return; }
+  const m = findChatMsg(msgId);
+  if (!m) return;
+  state.replyTo = msgId;
+  paintReplyBar();
+  const input = document.getElementById("chat-input");
+  if (input) input.focus();
+}
+function cancelReply() { state.replyTo = null; paintReplyBar(); }
+function showMsgMenu(msgId) {
+  const menu = document.getElementById("msg-menu");
+  const back = document.getElementById("msg-menu-backdrop");
+  if (!menu || !back) return;
+  state.menuMsgId = msgId;
+  const m = findChatMsg(msgId);
+  document.getElementById("msg-menu-copy").hidden = !(m && m.body);
+  menu.hidden = false;
+  back.hidden = false;
+}
+function hideMsgMenu() {
+  const menu = document.getElementById("msg-menu");
+  const back = document.getElementById("msg-menu-backdrop");
+  if (menu) menu.hidden = true;
+  if (back) back.hidden = true;
+}
+function copyText(t) {
+  function done() { showToast("کپی شد ✓"); }
+  function fallback() {
+    const ta = document.createElement("textarea");
+    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { showToast("کپی نشد"); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, fallback);
+  else fallback();
+}
+function bindChatMsgGestures(box) {
+  if (!box) return;
+  box.querySelectorAll(".msg").forEach(function (el) {
+    const id = parseInt(el.getAttribute("data-msg-id"), 10);
+    if (!id) return;
+    // Desktop: right-click opens the same menu as a long-press.
+    el.addEventListener("contextmenu", function (ev) { ev.preventDefault(); showMsgMenu(id); });
+    let sx = 0, sy = 0, lp = null, swiped = false;
+    el.addEventListener("touchstart", function (ev) {
+      const t = ev.touches[0];
+      sx = t.clientX; sy = t.clientY; swiped = false;
+      // Hold still ~0.5s for the menu; any move cancels it.
+      lp = setTimeout(function () { lp = null; showMsgMenu(id); }, 500);
+    }, { passive: true });
+    el.addEventListener("touchmove", function (ev) {
+      const t = ev.touches[0];
+      const dx = t.clientX - sx, dy = t.clientY - sy;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) { if (lp) { clearTimeout(lp); lp = null; } }
+      // Leftward, mostly-horizontal swipe: drag the bubble with the
+      // finger (vertical scrolling stays native via touch-action: pan-y).
+      if (dx < 0 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        el.style.transform = "translateX(" + Math.max(dx, -80) + "px)";
+        if (dx <= -60) swiped = true;
+      }
+    }, { passive: true });
+    function endTouch() {
+      if (lp) { clearTimeout(lp); lp = null; }
+      el.style.transition = "transform .18s ease";
+      el.style.transform = "";
+      setTimeout(function () { el.style.transition = ""; }, 200);
+      if (swiped) startReply(id);
+    }
+    el.addEventListener("touchend", endTouch, { passive: true });
+    el.addEventListener("touchcancel", endTouch, { passive: true });
+  });
+  // Tap a quote to jump to the original message and flash it.
+  box.querySelectorAll(".msg-quote").forEach(function (q) {
+    q.addEventListener("click", function () {
+      const target = document.querySelector('.msg[data-msg-id="' + q.getAttribute("data-jump") + '"]');
+      if (!target) return;
+      target.scrollIntoView({ block: "center" });
+      target.classList.add("msg-flash");
+      setTimeout(function () { target.classList.remove("msg-flash"); }, 1200);
+    });
+  });
 }
 function stopChatPolling() {
   if (state.chatTimer) { clearInterval(state.chatTimer); state.chatTimer = null; }
@@ -2713,6 +2873,7 @@ async function refreshChatApp(appId) {
 }
 async function openChat(appId, back) {
   stopChatPolling();
+  state.replyTo = null; // v100: a fresh chat starts with no reply pending
   let app = findApplication(appId);
   // v85: the chat header IS the other side's profile (name + photo) —
   // when the row is not in memory, paint it from the per-app cache
@@ -2938,12 +3099,19 @@ function renderChat() {
     '<div class="chat-composer-wrap">' +
     '<div class="chat-photo-preview" id="chat-photo-preview" hidden><img id="chat-photo-thumb" alt=""><button type="button" id="chat-photo-remove">حذف ✕</button></div>' +
     '<div class="chat-lock-note" id="chat-lock-note" hidden>منتظر جواب کارفرما هستید — تا وقتی جواب نداده نمی‌توانید پیام بفرستید.</div>' +
+    '<div class="chat-reply-bar" id="chat-reply-bar" hidden><div class="chat-reply-text"><div class="chat-reply-name" id="chat-reply-name"></div><div class="chat-reply-body" id="chat-reply-body"></div></div><button type="button" id="chat-reply-cancel" aria-label="لغو ریپلای">✕</button></div>' +
     '<div class="chat-composer">' +
     '<label class="chat-photo-btn" for="chat-photo-file" aria-label="فرستادن عکس">' + ICONS.image + "</label>" +
     '<input type="file" id="chat-photo-file" accept="image/*" hidden>' +
     '<input id="chat-input" type="text" placeholder="پیام بنویسید…" autocomplete="off">' +
     '<button class="chat-send" id="chat-send" type="button">ارسال</button>' +
-    "</div></div>";
+    "</div></div>" +
+    '<div class="msg-menu-backdrop" id="msg-menu-backdrop" hidden></div>' +
+    '<div class="msg-menu" id="msg-menu" hidden>' +
+    '<button type="button" id="msg-menu-reply">ریپلای</button>' +
+    '<button type="button" id="msg-menu-copy" hidden>کپی متن</button>' +
+    '<button type="button" id="msg-menu-cancel">بستن</button>' +
+    "</div>";
   viewEl().innerHTML = html;
   paintRtStatus();
   viewEl().querySelector("[data-back]").addEventListener("click", function () {
@@ -2956,9 +3124,17 @@ function renderChat() {
   document.getElementById("chat-input").addEventListener("keydown", function (ev) { if (ev.key === "Enter") sendChatMessage(); });
   document.getElementById("chat-photo-file").addEventListener("change", function () { handleChatPhoto(this.files && this.files[0]); this.value = ""; });
   document.getElementById("chat-photo-remove").addEventListener("click", function () { state.chatImage = null; document.getElementById("chat-photo-preview").hidden = true; });
+  // v100: reply bar + long-press menu wiring.
+  document.getElementById("chat-reply-cancel").addEventListener("click", cancelReply);
+  document.getElementById("msg-menu-reply").addEventListener("click", function () { const id = state.menuMsgId; hideMsgMenu(); if (id) startReply(id); });
+  document.getElementById("msg-menu-copy").addEventListener("click", function () { const m = findChatMsg(state.menuMsgId); hideMsgMenu(); if (m && m.body) copyText(m.body); });
+  document.getElementById("msg-menu-cancel").addEventListener("click", hideMsgMenu);
+  document.getElementById("msg-menu-backdrop").addEventListener("click", hideMsgMenu);
+  paintReplyBar(); // a re-render (e.g. after the thread loads) must restore the bar
   viewEl().querySelectorAll(".chat-img").forEach(function (img) {
     img.addEventListener("click", function () { img.classList.toggle("full"); });
   });
+  bindChatMsgGestures(document.getElementById("chat-msgs"));
   // v57: employer taps the chat header to open the freelancer's profile.
   // The back target is captured here — the chat's own back (job-apps or
   // my-apps) is restored when returning from the profile.
@@ -3009,6 +3185,12 @@ async function sendChatMessage() {
   const app = state.view.app;
   const job = state.view.job;
   const appId = state.view.applicationId;
+  // v100: a reply in progress attaches to this message; the bar is
+  // cleared up front (like the input) so a failed send does not leave
+  // a stale quote behind.
+  const replyTo = state.replyTo;
+  state.replyTo = null;
+  paintReplyBar();
   // v75: the id of the row just saved — the bot's poll notifies for
   // chat messages too, and this id lets it skip a message it already
   // pushed via sendData, so the other side is never notified twice.
@@ -3021,7 +3203,7 @@ async function sendChatMessage() {
     const row = {
       id: Math.max.apply(null, MOCK_MESSAGES.map(function (m) { return m.id; }).concat([0])) + 1,
       application_id: appId, sender_id: me().id, sender_name: me().name,
-      body: body, image: image || "", created_at: new Date().toISOString()
+      body: body, image: image || "", reply_to: replyTo || null, created_at: new Date().toISOString()
     };
     MOCK_MESSAGES.push(row);
     sentId = row.id;
@@ -3031,7 +3213,7 @@ async function sendChatMessage() {
     try {
       const saved = await sbInsert("messages", {
         application_id: appId, sender_id: me().id, sender_name: me().name,
-        body: body, image: image || ""
+        body: body, image: image || "", reply_to: replyTo || null
       });
       if (saved) {
         sentId = saved.id;
@@ -3051,11 +3233,17 @@ async function sendChatMessage() {
     ? (job ? job.employer_id : null)
     : app.freelancer_id;
   if (toId && toId !== me().id) {
+    // v100: the quoted message rides along so the Telegram notice can
+    // show what is being answered (the webhook resolves it from the
+    // DB itself; this is for the sendData path).
+    const quoted = replyTo ? findChatMsg(replyTo) : null;
     sendViaTelegram({
       type: "chat_message", application_id: appId, to_id: toId,
       message_id: sentId,
       job_title: job ? job.title : (app.job_title || ""),
-      from_name: me().name, preview: body ? body.slice(0, 80) : "📷 عکس"
+      from_name: me().name, preview: body ? body.slice(0, 80) : "📷 عکس",
+      reply_from: quoted ? (quoted.sender_id === me().id ? "شما" : (quoted.sender_name || "")) : "",
+      reply_preview: quoted ? replyPreviewText(quoted).slice(0, 60) : ""
     });
   }
 }
@@ -3322,7 +3510,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v99 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v100 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -3387,7 +3575,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
