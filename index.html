@@ -455,7 +455,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v94</span>
+<span class="app-version" id="app-version">v95</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -550,7 +550,19 @@ function isAdmin() { return MOCK || (me() && me().id === ADMIN_ID); }
    (per-user, per-bot, server-side) and restored from it on boot;
    localStorage stays as the fast local mirror. */
 const ROLE_KEY = "yt_role";
-const PROFILE_KEY = "yt_profile";
+/* v95: the freelancer profile is stored PER Telegram account.
+   localStorage is shared by every Telegram account on one device, so the
+   old single key 'yt_profile' made one account's saved profile
+   (skills, portfolio, country, bio, banner, photo) show up pre-filled
+   on every other account on the same phone — a fresh account must see
+   an empty form and fill it itself. Same per-user key pattern as the
+   caches (yt_cache_<id>, yt_chat_<id>_<appId>).
+   NO migration from the legacy key: it carries no owner id, so adopting
+   it for whoever opens the app first would leak it once more. The
+   legacy blob stays in localStorage, unread. Every account — including
+   the one that saved it — starts from an empty form once and re-fills. */
+const PROFILE_KEY_PREFIX = "yt_profile_";
+function profileKey() { return PROFILE_KEY_PREFIX + (me() ? me().id : "anon"); }
 const store = {
   _mem: null,
   get: function (k) { try { return window.localStorage.getItem(k); } catch (e) { return this._mem ? this._mem[k] : null; } },
@@ -698,10 +710,10 @@ function deepJobId() {
   return src.key === "job" ? src.id : null;
 }
 function getProfile() {
-  try { return JSON.parse(store.get(PROFILE_KEY) || "{}") || {}; } catch (e) { return {}; }
+  try { return JSON.parse(store.get(profileKey()) || "{}") || {}; } catch (e) { return {}; }
 }
 function saveProfile(p) {
-  try { store.set(PROFILE_KEY, JSON.stringify(p || {})); } catch (e) {}
+  try { store.set(profileKey(), JSON.stringify(p || {})); } catch (e) {}
 }
 
 /* ================= mock data (preview only) ================= */
@@ -3245,7 +3257,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v94 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v95 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
