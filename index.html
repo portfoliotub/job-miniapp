@@ -98,6 +98,9 @@
      the avatar in the profile form gets the same pencil control as the
      banner, just smaller, overlapping the avatar's bottom-left corner. */
   .avatar-wrap { position: relative; display: inline-block; flex: none; }
+  /* v110: the employer profile photo has no pencil anymore — the photo
+     itself is the button, so the wrap gets the pointer cursor. */
+  #emp-photo-wrap { cursor: pointer; }
   .avatar-edit { position: absolute; left: -4px; bottom: -4px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
   /* v108: the pencil next to the employer's name — same blue as the
      links, inline with the title. The input takes the card width. */
@@ -518,7 +521,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v109</span>
+<span class="app-version" id="app-version">v110</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -3810,8 +3813,8 @@ function renderEmployerProfile() {
   const hint = ph.source === "manual"
     ? "عکس انتخابی تو — توی آگهی‌های جدیدت نشون داده می‌شه"
     : ph.source === "telegram"
-    ? "عکس تلگرام تو — با مداد می‌تونی یه عکس دیگه انتخاب کنی"
-    : "هنوز عکس نداری — با مداد یه عکس انتخاب کن";
+    ? "عکس تلگرام تو — روی عکس بزن تا یه عکس دیگه انتخاب کنی"
+    : "هنوز عکس نداری — روی عکس بزن تا انتخاب کنی";
   // v108: the name is editable — a pencil next to it opens an inline
   // edit (input + ذخیره / لغو); when a custom name is set, the edit
   // also offers going back to the Telegram name. (No space between the
@@ -3828,8 +3831,13 @@ function renderEmployerProfile() {
       '<div class="meta">' + (u.username ? "@" + esc(u.username) : "کارفرما") + "</div></div>";
   viewEl().innerHTML = "<h2>پروفایل کارفرما</h2>" +
     '<div class="card profile-card">' +
-    '<div class="card-head"><div class="avatar-wrap">' + (ph.photo ? photoAvatarHtml(dispName, ph.photo) : '<div class="avatar avatar-empty" aria-label="بدون عکس">+</div>') +
-    '<button class="avatar-edit" id="emp-photo-edit" type="button" aria-label="ویرایش عکس پروفایل">' + ICONS.edit + '</button></div>' +
+    // v110 (user order 2026-11-13): the pencil on the employer photo is
+    // gone — the photo itself opens the picker (tap the avatar, or the
+    // "+" slot when there is no photo yet). The file input + change
+    // handler below are unchanged, so setting a photo works exactly
+    // as before.
+    '<div class="card-head"><div class="avatar-wrap" id="emp-photo-wrap" role="button" aria-label="ویرایش عکس پروفایل">' + (ph.photo ? photoAvatarHtml(dispName, ph.photo) : '<div class="avatar avatar-empty" aria-label="بدون عکس">+</div>') +
+    '</div>' +
     '<input type="file" id="emp-photo-file" accept="image/*" hidden>' +
     nameBlock + "</div>" +
     '<div class="meta" style="text-align:center;padding:0 14px 14px;">' + esc(hint) + "</div>" +
@@ -3840,9 +3848,9 @@ function renderEmployerProfile() {
   // v26: a dead photo URL falls back to the letter avatar.
   const photoImg = viewEl().querySelector(".avatar-photo");
   if (photoImg) photoImg.addEventListener("error", function () { photoImg.remove(); });
-  // v83 pattern: the pencil is the only photo control — it opens the
-  // gallery directly, like the freelancer photo pencil.
-  document.getElementById("emp-photo-edit").addEventListener("click", function () {
+  // v110: the photo itself is the only photo control — tapping the
+  // avatar (or the "+" slot) opens the gallery directly.
+  document.getElementById("emp-photo-wrap").addEventListener("click", function () {
     document.getElementById("emp-photo-file").click();
   });
   document.getElementById("emp-photo-file").addEventListener("change", function (ev) {
@@ -4056,7 +4064,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v109 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v110 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
