@@ -135,14 +135,15 @@
   }
   .my-job-card .job-row { margin: 0; padding: 0; box-shadow: none; border-radius: 0; cursor: default; }
   /* v62: pencil on each my-jobs card, top-left (the empty corner) — opens
-     the post form prefilled with the ad, to edit it. The spot beside it
-     is reserved for the handshake action (user order 2026-11-09: the
-     handshake does nothing yet, he will say what it does later).
+     the post form prefilled with the ad, to edit it. v109: the handshake
+     sits beside it (same round button) on APPROVED ads only — tapping it
+     means the employer found a freelancer: the channel post keeps its
+     text but loses the «ارسال درخواست» button, and the ad becomes filled.
      v63: the pencil is LOCKED (disabled, dimmed) unless the ad was
      rejected by the admin — only a rejected ad can be edited, so the
      employer can fix it and resubmit it for review. */
-  .job-edit-btn { flex-shrink: 0; align-self: flex-start; width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--secondary-bg); color: var(--hint); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
-  .job-edit-btn:active { background: var(--bg); color: var(--link); }
+  .job-edit-btn, .job-handshake-btn { flex-shrink: 0; align-self: flex-start; width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--secondary-bg); color: var(--hint); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+  .job-edit-btn:active, .job-handshake-btn:active { background: var(--bg); color: var(--link); }
   .job-edit-btn:disabled { opacity: .5; cursor: default; } /* v64: was .35, user asked it a bit more visible */
   .my-job-details { margin-top: 10px; }
   .my-job-details .meta-row { margin: 0; }
@@ -227,6 +228,7 @@
   .badge.accepted { background: #e6f4ea; color: #137333; }
   .badge.rejected { background: #fce8e6; color: #a50e0e; }
   .badge.closed { background: #e8eaed; color: #5f6368; }
+  .badge.filled { background: #e6f4ea; color: #137333; } /* v109: freelancer found */
   form { background: var(--bg); border-radius: 16px; padding: 4px 14px 16px; margin: 0 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
   label { display: block; font-size: 13.5px; font-weight: 600; margin: 12px 0 4px; }
   input, select, textarea {
@@ -516,7 +518,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v108</span>
+<span class="app-version" id="app-version">v109</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -543,7 +545,7 @@ const STATUS_LABEL = {
   pending: "در انتظار", accepted: "قبول شد", rejected: "رد شد"
 };
 const JOB_STATUS_LABEL = {
-  open: "باز", pending: "در انتظار تایید", closed: "بسته", rejected: "رد شد"
+  open: "باز", pending: "در انتظار تایید", closed: "بسته", rejected: "رد شد", filled: "فریلنسر پیدا شد"
 };
 
 /* ================= environment ================= */
@@ -986,6 +988,9 @@ const ICONS = {
   camera: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
   edit: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
   trash: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
+  /* v109: handshake (Lucide-style line icon) — the employer taps it when
+     they found a freelancer for an approved ad. */
+  handshake: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
   chat: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
   image: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
@@ -1286,6 +1291,10 @@ async function loadMyJobs() {
   if (MOCK) {
     state.myJobs = MOCK_JOBS.filter(function (j) { return j.employer_id === myId; })
       .slice().sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+    // v109: the live branch below fills jobById — the mock branch
+    // returned early without it, so lookups (submitApply's filled
+    // guard, openEditJob) saw nothing in preview mode.
+    state.myJobs.forEach(function (j) { state.jobById[j.id] = j; });
     return;
   }
   state.myJobs = await sbSelect("jobs", { select: "*", employer_id: "eq." + myId, order: "created_at.desc" }) || [];
@@ -1328,7 +1337,13 @@ async function loadReceivedApplications() {
 }
 async function findJob(jobId) {
   if (state.jobById[jobId]) return state.jobById[jobId];
-  if (MOCK) return MOCK_JOBS.find(function (j) { return j.id === jobId; }) || null;
+  if (MOCK) {
+    // v109: cache the mock row like the live branch does, so later
+    // lookups (submitApply's filled guard) see the same job.
+    const j = MOCK_JOBS.find(function (j) { return j.id === jobId; }) || null;
+    if (j) state.jobById[jobId] = j;
+    return j;
+  }
   try {
     const rows = await sbSelect("jobs", { select: "*", id: "eq." + jobId });
     if (rows && rows[0]) { state.jobById[jobId] = rows[0]; return rows[0]; }
@@ -1453,6 +1468,9 @@ async function openJobDetail(jobId) {
     html += '<button class="btn" id="see-apps">مشاهده درخواست‌ها</button>';
   } else if (alreadyApplied) {
     html += '<div class="card"><span class="muted">شما برای این آگهی درخواست فرستاده‌اید.</span></div>';
+  } else if (job.status === "filled") {
+    // v109: the employer found a freelancer — nobody can apply anymore.
+    html += '<div class="card" id="apply-filled"><span class="muted">این آگهی تکمیل شده است — کارفرما فریلنسر پیدا کرده و دیگر درخواست نمی‌پذیرد.</span></div>';
   } else if (job.status === "open" && getRole() === "freelancer") {
     html += '<h2>ارسال درخواست</h2>' +
       '<form id="apply-form">' +
@@ -1502,6 +1520,13 @@ async function submitApply(ev, jobId) {
     showToast("اول سوال‌ها رو جواب بده و نقش فریلنسر رو انتخاب کن");
     state.view = { name: getOnboardVersion() !== ONBOARD_VERSION ? "onboarding" : "welcome" };
     render();
+    return;
+  }
+  // v109: defense in depth — a filled ad takes no applications, even if
+  // the form was reached another way (the detail hides it already).
+  const _job = state.jobById[jobId];
+  if (_job && _job.status === "filled") {
+    showToast("این آگهی تکمیل شده است");
     return;
   }
   const payload = {
@@ -1623,6 +1648,54 @@ function confirmDeleteApp() {
   if (id == null) return;
   hideApp(id);
   render();
+}
+
+/* v109 (user order 2026-11-13): the handshake — the employer found a
+   freelancer for an APPROVED ad. Tapping the handshake asks first
+   (same بله / خیر sheet as the delete); «بله» records the choice
+   durably and the bot then removes the «ارسال درخواست» button from
+   the channel post (the post's TEXT stays) and marks the ad filled,
+   so nobody can apply anymore. Like decision_requests (v70), the
+   direct insert IS the durable signal — sendData best-effort only. */
+function openHandshakeConfirm(jobId) {
+  const job = state.jobById[jobId] || state.myJobs.find(function (j) { return j.id === jobId; });
+  if (!job) { showToast("آگهی پیدا نشد"); return; }
+  if (job.status !== "open") { showToast("فقط آگهی تاییدشده را می‌توان تکمیل کرد"); return; }
+  state.pendingHandshakeJobId = jobId;
+  const overlay = document.getElementById("sheet-overlay");
+  const sheet = document.getElementById("sheet");
+  sheet.innerHTML = '<div class="sheet-handle"></div><div class="sheet-title">فریلنسر پیدا شد؟</div>' +
+    '<div class="sheet-text">آگهی «<b>' + esc(job.title) + '</b>» تکمیل می‌شود — لینک ثبت درخواست از پست کانال حذف می‌شود و دیگر کسی نمی‌تواند درخواست بفرستد. متن آگهی در کانال می‌ماند.</div>' +
+    '<div class="row-btns"><button class="btn" type="button" id="hs-yes">بله، تکمیل شود</button><button class="btn btn-ghost" type="button" id="hs-no">خیر</button></div>';
+  overlay.hidden = false;
+  requestAnimationFrame(function () { overlay.classList.add("open"); });
+  document.getElementById("hs-yes").addEventListener("click", function () { closePicker(); confirmHandshake(); });
+  document.getElementById("hs-no").addEventListener("click", function () { closePicker(); state.pendingHandshakeJobId = null; });
+}
+async function confirmHandshake() {
+  const jobId = state.pendingHandshakeJobId;
+  state.pendingHandshakeJobId = null;
+  if (jobId == null) return;
+  if (MOCK) {
+    mockSetJobStatus({ job_id: jobId, status: "filled" });
+    showToast("آگهی تکمیل شد ✓ (حالت پیش‌نمایش)");
+    render();
+    return;
+  }
+  try {
+    await sbInsert("handshake_requests", {
+      job_id: jobId,
+      requested_by: me().id
+    });
+    sendViaTelegram({ type: "handshake_job", job_id: jobId });
+    // Optimistic local update so the card flips at once; the bot
+    // applies the same status to the database within a minute.
+    mockSetJobStatus({ job_id: jobId, status: "filled" });
+    showToast("فرستاده شد ✓");
+    render();
+  } catch (e) {
+    showToast("ارسال نشد — دوباره امتحان کن");
+  }
 }
 
 function renderPost() {
@@ -2311,10 +2384,13 @@ function renderMyJobs() {
       // nothing that opens. (The v45 requests line + button are removed.)
       // v62: one exception — the pencil (top-left) opens the edit form.
       // v63: it is locked unless the ad was rejected by the admin.
+      // v109: second exception — the handshake beside the pencil, on
+      // APPROVED (open) ads only: the employer found a freelancer.
       return '<div class="my-job-card">' +
         '<div class="job-row">' +
         '<div class="job-row-text"><div class="job-row-title">' + esc(job.title) + "</div>" +
         '<div class="job-row-status">' + jobStatusBadge(job.status) + "</div></div>" +
+        (job.status === "open" ? '<button class="job-handshake-btn" type="button" data-handshake-job="' + job.id + '" aria-label="فریلنسر پیدا شد">' + ICONS.handshake + "</button>" : "") +
         '<button class="job-edit-btn" type="button" data-edit-job="' + job.id + '" aria-label="ویرایش آگهی"' + (job.status === "rejected" ? "" : " disabled") + '>' + ICONS.edit + "</button>" +
         "</div>" +
         ((job.category || job.work_type || job.budget || job.deadline || job.description) ?
@@ -2335,6 +2411,9 @@ function renderMyJobs() {
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
   viewEl().querySelectorAll("[data-edit-job]").forEach(function (btn) {
     btn.addEventListener("click", function (ev) { ev.stopPropagation(); openEditJob(parseInt(btn.getAttribute("data-edit-job"), 10)); });
+  });
+  viewEl().querySelectorAll("[data-handshake-job]").forEach(function (btn) {
+    btn.addEventListener("click", function (ev) { ev.stopPropagation(); openHandshakeConfirm(parseInt(btn.getAttribute("data-handshake-job"), 10)); });
   });
 }
 
@@ -3977,7 +4056,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v108 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v109 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -4042,7 +4121,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
