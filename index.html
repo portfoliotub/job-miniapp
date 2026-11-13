@@ -87,8 +87,10 @@
      display ratio is YouTube's channel-art strip (2560×423), not 16:9 —
      16:9 was too tall; the upload size stays 2560×1440. v32: the banner's
      corners are rounded (12px); tapping it does nothing — the editor is
-     removed, only the pencil opens the gallery. */
-  .banner-wrap { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 2560 / 423; background: linear-gradient(135deg, #2481cc 0%, #6ab3f0 55%, #9fd0f7 100%); }
+     removed, only the pencil opens the gallery. v112: the pencil is
+     gone — the banner itself opens the picker, so it gets the pointer
+     cursor. */
+  .banner-wrap { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 2560 / 423; background: linear-gradient(135deg, #2481cc 0%, #6ab3f0 55%, #9fd0f7 100%); cursor: pointer; }
   .banner-img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .banner-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #fff; }
   .banner-empty .banner-title { font-weight: 700; font-size: 15px; line-height: 1.3; }
@@ -101,6 +103,9 @@
   /* v110: the employer profile photo has no pencil anymore — the photo
      itself is the button, so the wrap gets the pointer cursor. */
   #emp-photo-wrap { cursor: pointer; }
+  /* v112: same for the freelancer profile photo — no pencil, the
+     photo itself is the button. */
+  #profile-photo-wrap { cursor: pointer; }
   .avatar-edit { position: absolute; left: -4px; bottom: -4px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
   /* v108: the pencil next to the employer's name — same blue as the
      links, inline with the title. The input takes the card width. */
@@ -521,7 +526,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v111</span>
+<span class="app-version" id="app-version">v112</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1010,8 +1015,8 @@ function bannerHtml(p) {
   const img = p.banner
     ? '<img class="banner-img" id="banner-img" src="' + esc(p.banner) + '" alt="">'
     : '<div class="banner-empty"><div class="banner-title">بنر پروفایل</div><div class="muted">برای افزودن عکس بزنید</div></div>';
-  return '<div class="banner-wrap" id="banner-wrap">' + img +
-    '<button class="banner-edit" id="banner-edit" type="button" aria-label="ویرایش بنر">' + ICONS.edit + '</button></div>' +
+  return '<div class="banner-wrap" id="banner-wrap" role="button" aria-label="ویرایش بنر">' + img +
+    '</div>' +
     '<input type="file" id="banner-file" accept="image/*" hidden>';
 }
 /* v29: a banner must be exactly 2560×1440 (YouTube channel-art size) —
@@ -3736,8 +3741,8 @@ function renderProfile() {
   viewEl().innerHTML = "<h2>پروفایل فریلنسری</h2>" +
     '<div class="card profile-card">' +
     bannerHtml(p) +
-    '<div class="card-head"><div class="avatar-wrap">' + (p.photo ? photoAvatarHtml(u.name, p.photo) : '<div class="avatar avatar-empty" aria-label="بدون عکس">+</div>') +
-    '<button class="avatar-edit" id="profile-photo-edit" type="button" aria-label="ویرایش عکس پروفایل">' + ICONS.edit + '</button></div>' +
+    '<div class="card-head"><div class="avatar-wrap" id="profile-photo-wrap" role="button" aria-label="ویرایش عکس پروفایل">' + (p.photo ? photoAvatarHtml(u.name, p.photo) : '<div class="avatar avatar-empty" aria-label="بدون عکس">+</div>') +
+    '</div>' +
     '<input type="file" id="profile-photo-file" accept="image/*" hidden>' +
     '<div><div class="card-title">' + esc(u.name) + "</div></div></div>" +
     "</div>" +
@@ -3770,15 +3775,19 @@ function renderProfile() {
   if (photoImg) photoImg.addEventListener("error", function () { photoImg.remove(); });
   // v32: the pencil is the only banner control — it opens the gallery
   // directly. Tapping the banner itself does nothing (the editor is gone).
-  document.getElementById("banner-edit").addEventListener("click", function () {
+  // v112 (user order 2026-11-13): the pencil is gone — the banner
+  // itself opens the picker (tap the banner, or the empty strip).
+  document.getElementById("banner-wrap").addEventListener("click", function () {
     document.getElementById("banner-file").click();
   });
   document.getElementById("banner-file").addEventListener("change", function (ev) {
     handleBannerFile(ev.target.files && ev.target.files[0]);
   });
   // v83: the pencil is the only profile-photo control — it opens the
-  // gallery directly, like the banner pencil.
-  document.getElementById("profile-photo-edit").addEventListener("click", function () {
+  // gallery directly, like the banner pencil. v112 (user order
+  // 2026-11-13): the pencil is gone — the photo itself opens the
+  // picker (tap the avatar, or the "+" slot when there is no photo).
+  document.getElementById("profile-photo-wrap").addEventListener("click", function () {
     document.getElementById("profile-photo-file").click();
   });
   document.getElementById("profile-photo-file").addEventListener("change", function (ev) {
@@ -4062,7 +4071,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v111 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v112 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
