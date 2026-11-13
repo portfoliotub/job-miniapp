@@ -521,7 +521,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v110</span>
+<span class="app-version" id="app-version">v111</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -956,8 +956,9 @@ function photoAvatarHtmlLg(name, photo) {
    v59: the banner (channel art) is included too — the employer sees it
    at the top of the freelancer profile view. It is a JPEG data URL,
    downscaled to max 1280px wide when saved, so the snapshot stays small.
-   v60: the Telegram username is included too, so the profile view can
-   show @username under the name like the profile form does.
+   v60: the Telegram username is included too (kept in the snapshot;
+   v111: no profile view shows it anymore — the @username line under
+   the name was removed from every profile).
    v83: the profile photo is included too — the freelancer's manually-set
    photo (never the Telegram account photo). The snapshot photo is what
    the profile view, the employer rows and the chat show. */
@@ -3466,7 +3467,6 @@ function renderFreelancerProfile() {
     '<div class="card freelancer-profile">' + bannerStrip +
     '<div class="fp-head">' + photoAvatarHtmlLg(app.freelancer_name || "فریلنسر", (app.freelancer_profile && app.freelancer_profile.photo) || "") +
     '<div class="fp-name">' + esc(app.freelancer_name || "فریلنسر") + "</div>" +
-    ((prof && prof.username) ? '<div class="meta">@' + esc(prof.username) + "</div>" : "") +
     "</div>" +
     '<div class="fp-body">';
   if (hasProfile) {
@@ -3739,8 +3739,7 @@ function renderProfile() {
     '<div class="card-head"><div class="avatar-wrap">' + (p.photo ? photoAvatarHtml(u.name, p.photo) : '<div class="avatar avatar-empty" aria-label="بدون عکس">+</div>') +
     '<button class="avatar-edit" id="profile-photo-edit" type="button" aria-label="ویرایش عکس پروفایل">' + ICONS.edit + '</button></div>' +
     '<input type="file" id="profile-photo-file" accept="image/*" hidden>' +
-    '<div><div class="card-title">' + esc(u.name) + "</div>" +
-    '<div class="meta">' + (u.username ? "@" + esc(u.username) : "فریلنسر") + "</div></div></div>" +
+    '<div><div class="card-title">' + esc(u.name) + "</div></div></div>" +
     "</div>" +
     '<form id="profile-form">' +
     '<label>مهارت‌ها</label>' +
@@ -3825,10 +3824,9 @@ function renderEmployerProfile() {
       '<div class="row-btns" style="margin:8px 0 0"><button class="btn" type="button" id="emp-name-save">ذخیره</button>' +
       '<button class="btn btn-ghost" type="button" id="emp-name-cancel">لغو</button></div>' +
       (getEmployerName() ? '<div class="row-btns" style="margin:8px 0 0"><button class="btn btn-ghost" type="button" id="emp-name-reset">برگردوندن به اسم تلگرام</button></div>' : "") +
-      '<div class="meta" style="margin-top:8px">' + (u.username ? "@" + esc(u.username) : "کارفرما") + "</div></div>"
+      "</div>"
     : '<div><div class="card-title">' + esc(dispName) +
-      '<button class="name-edit" id="emp-name-edit" type="button" aria-label="ویرایش اسم">' + ICONS.edit + '</button></div>' +
-      '<div class="meta">' + (u.username ? "@" + esc(u.username) : "کارفرما") + "</div></div>";
+      '<button class="name-edit" id="emp-name-edit" type="button" aria-label="ویرایش اسم">' + ICONS.edit + '</button></div></div>';
   viewEl().innerHTML = "<h2>پروفایل کارفرما</h2>" +
     '<div class="card profile-card">' +
     // v110 (user order 2026-11-13): the pencil on the employer photo is
@@ -4064,7 +4062,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v110 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v111 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
