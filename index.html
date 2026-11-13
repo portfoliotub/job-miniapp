@@ -511,7 +511,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v105</span>
+<span class="app-version" id="app-version">v107</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1571,7 +1571,16 @@ function wirePicker(id, title, options, onChange) {
    them brings the row back. Nothing is sent to the bot. */
 function openDeleteConfirm(appId) {
   const app = findApplication(appId);
-  const name = (app && (app.freelancer_name || app.job_employer || (state.jobById[app.job_id] && state.jobById[app.job_id].employer_name))) || "این چت";
+  // v106 fix (live check 2026-11-12): the sheet must name the CHAT
+  // PARTNER, not the signed-in user. On the freelancer's own
+  // applications freelancer_name IS the user themself (کالی), so the
+  // name comes from the employer side there; on received rows it is
+  // the freelancer who applied.
+  const name = app
+    ? (myAppsEmployerSide()
+      ? (app.freelancer_name || "فریلنسر")
+      : (app.job_employer || (state.jobById[app.job_id] && state.jobById[app.job_id].employer_name) || "کارفرما"))
+    : "این چت";
   state.pendingDeleteAppId = appId;
   const overlay = document.getElementById("sheet-overlay");
   const sheet = document.getElementById("sheet");
@@ -3675,22 +3684,14 @@ function renderProfile() {
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
 }
 
-/* v103: the employer's profile — photo, stats, role switch. The photo
+/* v103: the employer's profile — photo, role switch. The photo
    is the manually-set one when there is one, else the Telegram photo
    the bot backfilled onto the employer's ads, else the letter avatar.
-   The stats count the employer's own ads and the applications received
-   on them (loaded by the profile tab before this renders). No banner,
-   no skills/bio form — an employer has none of those; the photo is
-   what freelancers see on the ad, so it is the profile's main control. */
-function employerStats() {
-  const jobs = (state.myJobs || []).length;
-  let received = 0, accepted = 0;
-  (state.receivedApps || []).forEach(function (a) {
-    received++;
-    if (a.status === "accepted") accepted++;
-  });
-  return { jobs: jobs, received: received, accepted: accepted };
-}
+   v107 (user order 2026-11-12): the stats row (آگهی‌ها / درخواست‌ها /
+   قبول‌شده‌ها) is gone — the profile is just the photo, the name and
+   the two buttons. No banner, no skills/bio form — an employer has
+   none of those; the photo is what freelancers see on the ad, so it
+   is the profile's main control. */
 function employerProfilePhoto() {
   const manual = getEmployerPhoto();
   if (manual) return { photo: manual, source: "manual" };
@@ -3701,7 +3702,6 @@ function employerProfilePhoto() {
 function renderEmployerProfile() {
   const u = me();
   const ph = employerProfilePhoto();
-  const st = employerStats();
   const hint = ph.source === "manual"
     ? "عکس انتخابی تو — توی آگهی‌های جدیدت نشون داده می‌شه"
     : ph.source === "telegram"
@@ -3715,11 +3715,6 @@ function renderEmployerProfile() {
     '<div><div class="card-title">' + esc(u.name) + "</div>" +
     '<div class="meta">' + (u.username ? "@" + esc(u.username) : "کارفرما") + "</div></div></div>" +
     '<div class="meta" style="text-align:center;padding:0 14px 14px;">' + esc(hint) + "</div>" +
-    "</div>" +
-    '<div class="stats">' +
-    '<div class="stat"><div class="stat-label">آگهی‌ها</div><div class="stat-value">' + st.jobs + "</div></div>" +
-    '<div class="stat"><div class="stat-label">درخواست‌ها</div><div class="stat-value">' + st.received + "</div></div>" +
-    '<div class="stat"><div class="stat-label">قبول‌شده‌ها</div><div class="stat-value">' + st.accepted + "</div></div>" +
     "</div>" +
     '<div class="row-btns"><button class="btn" type="button" id="emp-my-jobs">آگهی‌های من</button>' +
     '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
@@ -3912,7 +3907,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v105 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v107 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
