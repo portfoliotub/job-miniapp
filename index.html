@@ -526,7 +526,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v114</span>
+<span class="app-version" id="app-version">v115</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1486,7 +1486,7 @@ function sendToBot(payload, mockApply) {
 }
 function mockCreateJob(p) {
   const id = Math.max.apply(null, MOCK_JOBS.map(function (j) { return j.id; }).concat([0])) + 1;
-  const empPhoto = getEmployerPhoto() || me().photo || ""; // v103: a new ad carries the employer's profile photo
+  const empPhoto = getEmployerPhoto() || ""; // v103: a new ad carries the employer's profile photo
   const job = {
     id: id, employer_id: me().id, employer_name: displayEmployerName(), employer_photo: empPhoto,
     title: p.title, category: p.category, budget: p.budget || "",
@@ -1505,7 +1505,7 @@ function mockUpdateJob(id, p) {
   job.title = p.title; job.category = p.category; job.budget = p.budget || "";
   job.deadline = p.deadline || ""; job.work_type = p.work_type || "دورکاری";
   job.location = p.location || ""; job.description = p.description || "";
-  const empPhoto = getEmployerPhoto() || me().photo || ""; // v103
+  const empPhoto = getEmployerPhoto() || ""; // v103
   if (empPhoto) job.employer_photo = empPhoto;
   if (job.status === "rejected") job.status = "pending";
 }
@@ -1896,7 +1896,7 @@ async function submitPostJob(ev) {
       deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
       description: payload.description
     };
-    const empPhotoEdit = getEmployerPhoto() || me().photo || "";
+    const empPhotoEdit = getEmployerPhoto() || "";
     if (empPhotoEdit) update.employer_photo = empPhotoEdit;
     if (wasRejected) update.status = "pending";
     if (MOCK) {
@@ -1931,9 +1931,9 @@ async function submitPostJob(ev) {
   // no-op — e.g. the app was opened from the menu button instead of /start.
   try {
     // v89: only send employer_photo when the user actually has one.
-    // me().photo is "" in Telegram (initData has no photo_url), and
-    // sending "" would leave the row unfixable — the bot backfill only
-    // matches NULL. Omitting it leaves NULL so the backfill fills it.
+    // v115: only a manually-set photo is ever sent — a Telegram
+    // account photo is never shown. Sending "" would leave the row
+    // unfixable, so omit the key and leave it NULL instead.
     // v103: the manually-set employer profile photo counts too, so a
     // new ad carries it and freelancers see it.
     const jobRow = {
@@ -1942,7 +1942,7 @@ async function submitPostJob(ev) {
       deadline: payload.deadline, work_type: payload.work_type, location: payload.location,
       description: payload.description, status: "pending"
     };
-    const empPhotoNew = getEmployerPhoto() || me().photo || "";
+    const empPhotoNew = getEmployerPhoto() || "";
     if (empPhotoNew) jobRow.employer_photo = empPhotoNew;
     const row = await sbInsert("jobs", jobRow);
     // Best-effort: tell the bot so the admin is notified instantly.
@@ -3916,8 +3916,12 @@ function renderProfile() {
 }
 
 /* v103: the employer's profile — photo, role switch. The photo
-   is the manually-set one when there is one, else the Telegram photo
-   the bot backfilled onto the employer's ads, else the letter avatar.
+   is the manually-set one when there is one, else the letter avatar.
+   v115 (user order 2026-11-13): the Telegram-photo rule is cancelled
+   — a Telegram account photo is NEVER shown; only a photo the user
+   sets manually inside the mini app is displayed. The old fallback
+   (the bot backfilled the Telegram photo onto the employer's ads and
+   the profile read it from there) is gone on both sides.
    v107 (user order 2026-11-12): the stats row (آگهی‌ها / درخواست‌ها /
    قبول‌شده‌ها) is gone — the profile is just the photo, the name and
    the two buttons. No banner, no skills/bio form — an employer has
@@ -3926,8 +3930,6 @@ function renderProfile() {
 function employerProfilePhoto() {
   const manual = getEmployerPhoto();
   if (manual) return { photo: manual, source: "manual" };
-  const fromJob = (state.myJobs || []).find(function (j) { return j.employer_photo; });
-  if (fromJob) return { photo: fromJob.employer_photo, source: "telegram" };
   return { photo: "", source: "none" };
 }
 function renderEmployerProfile() {
@@ -3936,8 +3938,6 @@ function renderEmployerProfile() {
   const dispName = displayEmployerName();
   const hint = ph.source === "manual"
     ? "عکس انتخابی تو — توی آگهی‌های جدیدت نشون داده می‌شه"
-    : ph.source === "telegram"
-    ? "عکس تلگرام تو — روی عکس بزن تا یه عکس دیگه انتخاب کنی"
     : "هنوز عکس نداری — روی عکس بزن تا انتخاب کنی";
   // v108: the name is editable — a pencil next to it opens an inline
   // edit (input + ذخیره / لغو); when a custom name is set, the edit
@@ -4188,7 +4188,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v114 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v115 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
