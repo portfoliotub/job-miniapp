@@ -526,7 +526,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v112</span>
+<span class="app-version" id="app-version">v113</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1473,7 +1473,10 @@ async function openJobDetail(jobId) {
       "</div>" : "") +
     (job.description ? '<p class="desc">' + esc(job.description) + "</p>" : "") +
     "</div>";
-  if (mine) {
+  // v113 (user order 2026-11-13): once the employer has found a
+  // freelancer (the ad is filled), the «مشاهده درخواست‌ها» button is
+  // gone — the owner sees the same filled note as everyone else.
+  if (mine && job.status !== "filled") {
     html += '<button class="btn" id="see-apps">مشاهده درخواست‌ها</button>';
   } else if (alreadyApplied) {
     html += '<div class="card"><span class="muted">شما برای این آگهی درخواست فرستاده‌اید.</span></div>';
@@ -4071,7 +4074,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v112 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v113 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
