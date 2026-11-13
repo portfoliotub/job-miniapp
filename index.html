@@ -526,7 +526,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v113</span>
+<span class="app-version" id="app-version">v114</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -803,6 +803,110 @@ function getEmployerPhoto() {
 function saveEmployerPhoto(dataUrl) {
   try { store.set(empPhotoKey(), dataUrl || ""); } catch (e) {}
 }
+/* v114 (user order 2026-11-13): a profile photo change must show for
+   EVERYONE in the chat list, on old ads and applications too — not only
+   on new posts/applies (the v103 snapshot rule). Photos are snapshots
+   frozen at post/apply time (jobs.employer_photo, applications
+   .freelancer_photo + .freelancer_profile.photo), and the app cannot
+   UPDATE those rows itself (no anon UPDATE on applications, only
+   rejected→pending on jobs). So a photo save records the change in
+   photo_update_requests and the bot rewrites the snapshots (same
+   pattern as decision_requests / handshake_requests). Best-effort: a
+   failed insert never blocks the local save. In MOCK mode the bot side
+   is simulated here — the mock source rows are patched at once so the
+   list shows the new photo after a refresh. */
+function requestPhotoUpdate(role, photo) {
+  if (!me() || !me().id) return;
+  var p = photo || "";
+  if (MOCK) {
+    if (role === "freelancer") {
+      MOCK_APPS.forEach(function (a) {
+        if (a.freelancer_id === me().id) {
+          a.freelancer_photo = p;
+          if (a.freelancer_profile) a.freelancer_profile.photo = p;
+        }
+      });
+    } else {
+      MOCK_JOBS.forEach(function (j) {
+        if (j.employer_id === me().id) j.employer_photo = p;
+      });
+    }
+  }
+  sbInsert("photo_update_requests", { user_id: me().id, role: role, photo: p }).catch(function () {});
+}
+/* v114: light photo refresh — the other side can change their photo at
+   any moment (photo_update_requests + bot rewrite), and the list must
+   pick it up without a tab switch or relaunch. The 10s poll deliberately
+   never reloads the application rows (v87: their freelancer_profile
+   .banner is ~400 KB of base64), so this re-reads ONLY the photo
+   columns — id + freelancer_photo on the employer side, id +
+   employer_photo on the freelancer side — and patches the in-memory
+   rows. Returns true when a photo actually changed (the caller then
+   re-renders the list). In MOCK mode the photos are read from the mock
+   source rows (the "database"), which requestPhotoUpdate already
+   patched. */
+async function refreshPhotos() {
+  var changed = false;
+  try {
+    if (myAppsEmployerSide()) {
+      var apps = state.receivedApps || [];
+      if (!apps.length) return false;
+      var rows;
+      if (MOCK) {
+        rows = apps.map(function (a) {
+          var src = null;
+          MOCK_APPS.forEach(function (x) { if (x.id === a.id) src = x; });
+          return { id: a.id, freelancer_photo: src ? (src.freelancer_photo || "") : "" };
+        });
+      } else {
+        rows = await sbSelect("applications", { select: "id,freelancer_photo", id: "in.(" + apps.map(function (a) { return a.id; }).join(",") + ")" }) || [];
+      }
+      rows.forEach(function (r) {
+        var a = null;
+        apps.forEach(function (x) { if (x.id === r.id) a = x; });
+        if (!a) return;
+        var p = r.freelancer_photo || "";
+        var oldTop = a.freelancer_photo || "";
+        var oldSnap = (a.freelancer_profile && a.freelancer_profile.photo) || "";
+        if (oldTop === p) return;
+        a.freelancer_photo = p;
+        // The row displays the snapshot photo (profile.photo), not the
+        // top-level column — patch it only when the row's two fields
+        // agree (a normal in-sync row whose photo the bot rewrote). A
+        // divergent row (e.g. the v83 fixture, whose top-level photo
+        // differs from its snapshot) keeps its snapshot, and a later
+        // full reload re-reads both fields from the database.
+        if (a.freelancer_profile && oldTop === oldSnap && oldSnap !== p) { a.freelancer_profile.photo = p; changed = true; }
+      });
+    } else {
+      var mine = state.myApplications || [];
+      if (!mine.length) return false;
+      var jids = [];
+      mine.forEach(function (a) { if (a.job_id && jids.indexOf(a.job_id) === -1) jids.push(a.job_id); });
+      if (!jids.length) return false;
+      var jrows;
+      if (MOCK) {
+        jrows = jids.map(function (id) {
+          var src = null;
+          MOCK_JOBS.forEach(function (x) { if (x.id === id) src = x; });
+          return { id: id, employer_photo: src ? (src.employer_photo || "") : "" };
+        });
+      } else {
+        jrows = await sbSelect("jobs", { select: "id,employer_photo", id: "in.(" + jids.join(",") + ")" }) || [];
+      }
+      var map = {};
+      jrows.forEach(function (j) { map[j.id] = j.employer_photo || ""; });
+      mine.forEach(function (a) {
+        if (!(a.job_id in map)) return;
+        var p = map[a.job_id];
+        if ((a.job_employer_photo || "") !== p) { a.job_employer_photo = p; changed = true; }
+        var job = state.jobById && state.jobById[a.job_id];
+        if (job && (job.employer_photo || "") !== p) { job.employer_photo = p; changed = true; }
+      });
+    }
+  } catch (e) { return false; }
+  return changed;
+}
 
 /* v108 (user order 2026-11-13): the employer can change the name
    shown on their profile — a per-account override of the Telegram
@@ -1073,7 +1177,9 @@ function handleProfilePhotoFile(file) {
       canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
       canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
       canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      saveProfile(Object.assign({}, getProfile(), { photo: canvas.toDataURL("image/jpeg", 0.8) }));
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      saveProfile(Object.assign({}, getProfile(), { photo: dataUrl }));
+      requestPhotoUpdate("freelancer", dataUrl); // v114: show the new photo to everyone
       if (document.getElementById("profile-form")) renderProfile();
       showToast("عکس پروفایل ذخیره شد ✓");
     };
@@ -1099,7 +1205,9 @@ function handleEmployerPhotoFile(file) {
       canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
       canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
       canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      saveEmployerPhoto(canvas.toDataURL("image/jpeg", 0.8));
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      saveEmployerPhoto(dataUrl);
+      requestPhotoUpdate("employer", dataUrl); // v114: show the new photo to everyone
       if (state.view.name === "profile") render();
       showToast("عکس پروفایل ذخیره شد ✓");
     };
@@ -2183,7 +2291,12 @@ async function refreshMyApps() {
     const before = myAppsSignature();
     const ok = await refreshUnread(false); // v87: light poll — messages only, no applications reload (see refreshUnread)
     if (!ok) return;
-    if (state.view.name === "my-apps" && myAppsSignature() !== before) render();
+    // v114: light photo refresh — a photo change on the other side shows
+    // in the list within one poll tick, without re-downloading the
+    // banner-heavy rows.
+    var photosChanged = false;
+    try { photosChanged = await refreshPhotos(); } catch (e) {}
+    if (state.view.name === "my-apps" && (myAppsSignature() !== before || photosChanged)) render();
   } finally {
     state.listRefreshing = false;
   }
@@ -3899,6 +4012,7 @@ function renderEmployerProfile() {
   const removeBtn = document.getElementById("emp-photo-remove");
   if (removeBtn) removeBtn.addEventListener("click", function () {
     saveEmployerPhoto("");
+    requestPhotoUpdate("employer", ""); // v114: clear the photo for everyone too
     render();
     showToast("عکس پروفایل حذف شد");
   });
@@ -4074,7 +4188,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v113 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v114 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -4139,7 +4253,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, requestPhotoUpdate: requestPhotoUpdate, refreshPhotos: refreshPhotos, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
