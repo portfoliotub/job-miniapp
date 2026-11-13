@@ -526,7 +526,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v115</span>
+<span class="app-version" id="app-version">v116</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -789,12 +789,11 @@ function saveProfile(p) {
 /* v103: the employer's profile photo, stored PER Telegram account like
    the freelancer profile (v95 — localStorage is shared across accounts
    on one device). A plain data-URL string, NOT an object: "" = no
-   manual photo (the Telegram photo from the employer's jobs shows
-   instead, or the letter avatar). It rides on NEW job posts as
-   employer_photo (submitPostJob + mockCreateJob) so freelancers see it
-   on the ad; the bot's backfill only fills NULL/"" rows (v89), so a
-   manual photo is never overwritten. Old ads keep the photo they were
-   posted with — same snapshot rule as the freelancer side. */
+   manual photo (the letter avatar shows — v115: a Telegram account
+   photo is NEVER shown). It rides on NEW job posts as employer_photo
+   (submitPostJob + mockCreateJob) so freelancers see it on the ad.
+   Since v114 a photo change also reaches OLD ads (photo_update_requests
+   + bot rewrite) — photos propagate, names keep the snapshot rule. */
 const EMP_PHOTO_KEY_PREFIX = "yt_emp_photo_";
 function empPhotoKey() { return EMP_PHOTO_KEY_PREFIX + (me() ? me().id : "anon"); }
 function getEmployerPhoto() {
@@ -927,6 +926,27 @@ function saveEmployerName(name) {
    set, else the Telegram name. */
 function displayEmployerName() { return getEmployerName() || me().name; }
 
+/* v116 (user order 2026-11-13): the freelancer's display name — the
+   same manual override as the employer's (v108). A per-account
+   override of the Telegram name (same per-account keying as the
+   employer name, v108: one phone can hold several Telegram accounts).
+   "" = no override, the Telegram name shows. It rides on NEW
+   applications as freelancer_name (mockApply + submitApply) so
+   employers see it in the list and in the chat; old applications keep
+   the name they were filed with — names keep the snapshot rule (v114:
+   only photos propagate). */
+const FL_NAME_KEY_PREFIX = "yt_fl_name_";
+function flNameKey() { return FL_NAME_KEY_PREFIX + (me() ? me().id : "anon"); }
+function getFreelancerName() {
+  try { return (store.get(flNameKey()) || "").trim(); } catch (e) { return ""; }
+}
+function saveFreelancerName(name) {
+  try { store.set(flNameKey(), (name || "").trim()); } catch (e) {}
+}
+/* The name the freelancer side shows: the manual override when one is
+   set, else the Telegram name. */
+function displayFreelancerName() { return getFreelancerName() || me().name; }
+
 /* v105: chats the user deleted from «درخواست‌های من» — a per-account
    localStorage list of application ids (same per-account keying as the
    profile, v95: one phone can hold several Telegram accounts). The
@@ -1003,7 +1023,8 @@ const state = {
   loading: false,
   error: "",
   editingJobId: null, // v62: id of the ad being edited (null = new post)
-  empNameEditing: false // v108: the employer profile name edit is open
+  empNameEditing: false, // v108: the employer profile name edit is open
+  flNameEditing: false, // v116: the freelancer profile name edit is open
 };
 
 /* ================= helpers ================= */
@@ -1512,7 +1533,7 @@ function mockUpdateJob(id, p) {
 function mockApply(p) {
   const id = Math.max.apply(null, MOCK_APPS.map(function (a) { return a.id; }).concat([0])) + 1;
   MOCK_APPS.unshift({
-    id: id, job_id: p.job_id, freelancer_id: me().id, freelancer_name: me().name,
+    id: id, job_id: p.job_id, freelancer_id: me().id, freelancer_name: displayFreelancerName(),
     freelancer_photo: getProfile().photo || "", freelancer_profile: profileSnapshot(),
     samples: p.samples || "", price: p.price || "", message: p.message || "",
     status: "pending", created_at: new Date().toISOString()
@@ -1672,7 +1693,7 @@ async function submitApply(ev, jobId) {
   // Primary channel: direct Supabase write (same reasoning as posting).
   try {
     const row = await sbInsert("applications", {
-      job_id: jobId, freelancer_id: me().id, freelancer_name: me().name,
+      job_id: jobId, freelancer_id: me().id, freelancer_name: displayFreelancerName(),
       freelancer_photo: getProfile().photo || "", freelancer_profile: profileSnapshot(),
       samples: payload.samples, price: payload.price, message: payload.message,
       status: "pending"
@@ -3853,14 +3874,28 @@ function renderProfile() {
   // switch) instead of the freelancer form.
   if (getRole() === "employer") { renderEmployerProfile(); return; }
   const p = getProfile();
-  const u = me();
+  const dispName = displayFreelancerName();
+  // v116: the name is editable, like the employer's (v108) — a pencil
+  // next to it opens an inline edit (input + ذخیره / لغو); when a
+  // custom name is set, the edit also offers going back to the
+  // Telegram name. (No space between the name and the button in the
+  // markup — the button is SVG-only, so the title's textContent stays
+  // exactly the name.)
+  const nameBlock = state.flNameEditing
+    ? '<div style="width:100%;max-width:280px"><input class="name-input" id="fl-name-input" type="text" maxlength="50" value="' + esc(dispName) + '">' +
+      '<div class="row-btns" style="margin:8px 0 0"><button class="btn" type="button" id="fl-name-save">ذخیره</button>' +
+      '<button class="btn btn-ghost" type="button" id="fl-name-cancel">لغو</button></div>' +
+      (getFreelancerName() ? '<div class="row-btns" style="margin:8px 0 0"><button class="btn btn-ghost" type="button" id="fl-name-reset">برگردوندن به اسم تلگرام</button></div>' : "") +
+      "</div>"
+    : '<div><div class="card-title">' + esc(dispName) +
+      '<button class="name-edit" id="fl-name-edit" type="button" aria-label="ویرایش اسم">' + ICONS.edit + '</button></div></div>';
   viewEl().innerHTML = "<h2>پروفایل فریلنسری</h2>" +
     '<div class="card profile-card">' +
     bannerHtml(p) +
-    '<div class="card-head"><div class="avatar-wrap" id="profile-photo-wrap" role="button" aria-label="ویرایش عکس پروفایل">' + (p.photo ? photoAvatarHtml(u.name, p.photo) : '<div class="avatar avatar-empty" aria-label="بدون عکس">+</div>') +
+    '<div class="card-head"><div class="avatar-wrap" id="profile-photo-wrap" role="button" aria-label="ویرایش عکس پروفایل">' + (p.photo ? photoAvatarHtml(dispName, p.photo) : '<div class="avatar avatar-empty" aria-label="بدون عکس">+</div>') +
     '</div>' +
     '<input type="file" id="profile-photo-file" accept="image/*" hidden>' +
-    '<div><div class="card-title">' + esc(u.name) + "</div></div></div>" +
+    nameBlock + "</div>" +
     "</div>" +
     '<form id="profile-form">' +
     '<label>مهارت‌ها</label>' +
@@ -3913,6 +3948,36 @@ function renderProfile() {
   const bannerImg = document.getElementById("banner-img");
   if (bannerImg) bannerImg.addEventListener("error", function () { bannerImg.remove(); });
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
+  // v116: name edit wiring (same as the employer's, v108).
+  const flNameEditBtn = document.getElementById("fl-name-edit");
+  if (flNameEditBtn) flNameEditBtn.addEventListener("click", function () {
+    state.flNameEditing = true; render();
+    const inp = document.getElementById("fl-name-input");
+    if (inp) { inp.focus(); inp.select(); }
+  });
+  const flNameInput = document.getElementById("fl-name-input");
+  if (flNameInput) flNameInput.addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") { ev.preventDefault(); document.getElementById("fl-name-save").click(); }
+    if (ev.key === "Escape") { document.getElementById("fl-name-cancel").click(); }
+  });
+  const flNameSaveBtn = document.getElementById("fl-name-save");
+  if (flNameSaveBtn) flNameSaveBtn.addEventListener("click", function () {
+    const v = (document.getElementById("fl-name-input").value || "").trim();
+    if (!v) { showToast("اسم نمی‌تونه خالی باشه"); return; }
+    saveFreelancerName(v);
+    state.flNameEditing = false; render();
+    showToast("اسم پروفایل عوض شد ✓");
+  });
+  const flNameCancelBtn = document.getElementById("fl-name-cancel");
+  if (flNameCancelBtn) flNameCancelBtn.addEventListener("click", function () {
+    state.flNameEditing = false; render();
+  });
+  const flNameResetBtn = document.getElementById("fl-name-reset");
+  if (flNameResetBtn) flNameResetBtn.addEventListener("click", function () {
+    saveFreelancerName("");
+    state.flNameEditing = false; render();
+    showToast("اسم به اسم تلگرام برگشت");
+  });
 }
 
 /* v103: the employer's profile — photo, role switch. The photo
@@ -4123,6 +4188,7 @@ async function switchTab(tab) {
   // v103: the profile tab is open to both roles now (was freelancer-only) — the employer profile lives there too.
   state.editingJobId = null; // v62: any tab switch cancels an edit
   state.empNameEditing = false; // v108: any tab switch cancels a name edit
+  state.flNameEditing = false; // v116: same for the freelancer name edit
   state.tab = tab;
   state.error = "";
   if (tab === "post") {
@@ -4188,7 +4254,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v115 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v116 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -4253,7 +4319,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, requestPhotoUpdate: requestPhotoUpdate, refreshPhotos: refreshPhotos, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, getFreelancerName: getFreelancerName, saveFreelancerName: saveFreelancerName, displayFreelancerName: displayFreelancerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, requestPhotoUpdate: requestPhotoUpdate, refreshPhotos: refreshPhotos, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
