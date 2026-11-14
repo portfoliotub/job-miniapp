@@ -526,7 +526,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v117</span>
+<span class="app-version" id="app-version">v118</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -546,10 +546,9 @@ const CONFIG = {
      (implicit flow — the id is public, there is NO secret to keep).
      The client is a Web application in Google Cloud Console with the
      redirect URI https://ythiring.pages.dev/oauth-callback and
-     the YouTube Data API v3 enabled. Empty until the admin creates it
-     and pastes the id here — the connect button then explains that
-     the setup is not done yet instead of opening a broken login. */
-  GOOGLE_CLIENT_ID: ""
+     the YouTube Data API v3 enabled. Set in v118 — created 2026-11-14
+     under kalidorxyz@gmail.com, project "My First Project". */
+  GOOGLE_CLIENT_ID: "18097423721-sj90q0pdd1mrphhncrh6b0kvjdbbbtn8.apps.googleusercontent.com"
 };
 
 /* ================= constants ================= */
@@ -4474,7 +4473,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v117 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v118 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
