@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>اتصال یوتیوب — YT Hiring</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif; background: #f2f4f7; color: #1c2733; margin: 0; padding: 24px 16px; text-align: center; }
+  .card { max-width: 420px; margin: 48px auto 0; background: #fff; border-radius: 16px; padding: 28px 22px; box-shadow: 0 4px 24px rgba(0,0,0,.08); }
+  h1 { font-size: 19px; margin: 0 0 10px; }
+  p { font-size: 14px; line-height: 1.9; color: #4a5a6a; margin: 0 0 18px; }
+  .btn { display: inline-block; background: #2481cc; color: #fff; border: 0; border-radius: 10px; padding: 13px 26px; font-size: 16px; text-decoration: none; cursor: pointer; }
+  .btn:disabled { opacity: .5; }
+  .ok { color: #1d9d55; font-size: 44px; line-height: 1; }
+  .err { color: #c0392b; font-size: 44px; line-height: 1; }
+  .muted { font-size: 12px; color: #8a97a5; }
+</style>
+</head>
+<body>
+<div class="card" id="box">
+  <h1>در حال بررسی کانال یوتیوب…</h1>
+  <p>لطفاً صبر کنید.</p>
+</div>
+<script>
+/* v117 (2026-11-14): Google OAuth callback for the employer YouTube
+   connect (implicit flow — response_type=token, no backend, no client
+   secret). Google redirects here with #access_token=…&state=<telegram_id>.<nonce>.
+   This page reads the user's OWN channel (channels?mine=true, scope
+   youtube.readonly), writes ONLY the channel identity to the
+   employer_youtube table, and never stores the access token anywhere.
+   The user then taps back into Telegram with ?startapp=yt_connected,
+   where the mini app re-checks the row and opens the employer home. */
+(function () {
+  var SUPABASE_URL = "https://ohgocudnifnjqbtuivic.supabase.co";
+  var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oZ29jdWRuaWZuanFidHVpdmljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2OTY0OTcsImV4cCI6MjEwOTI3MjQ5N30.3loxkxf6kQy2CcOF0CugHbgG-w5dcpIOio7YN-xrcd4";
+  var box = document.getElementById("box");
+  function show(html) { box.innerHTML = html; }
+  function fail(msg) {
+    show('<div class="err">✕</div><h1>اتصال انجام نشد</h1><p>' + msg + '</p>' +
+      '<p class="muted">به مینی‌اپ برگرد و دوباره تلاش کن.</p>' +
+      '<a class="btn" href="https://t.me/YThiringai/app">برگرد به مینی‌اپ</a>');
+  }
+  var hash = new URLSearchParams((location.hash || "").replace(/^#/, ""));
+  var token = hash.get("access_token") || "";
+  var state = hash.get("state") || "";
+  if (!token) { fail("توکن گوگل دریافت نشد — ورود کامل نشد."); return; }
+  var parts = state.split(".");
+  var telegramId = parseInt(parts[0], 10);
+  var nonce = parts.slice(1).join(".");
+  if (!telegramId) { fail("شناسه کاربر پیدا نشد."); return; }
+  fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", {
+    headers: { "Authorization": "Bearer " + token }
+  }).then(function (r) {
+    if (!r.ok) throw new Error("YouTube " + r.status);
+    return r.json();
+  }).then(function (data) {
+    var item = (data.items || [])[0];
+    if (!item) { fail("این حساب گوگل کانال یوتیوب نداره — با حسابی وارد شو که کانال داره."); return; }
+    var sn = item.snippet || {};
+    return fetch(SUPABASE_URL + "/rest/v1/employer_youtube", {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify({
+        telegram_id: telegramId,
+        channel_id: item.id,
+        channel_title: sn.title || "",
+        channel_handle: sn.customUrl || "",
+        nonce: nonce || null
+      })
+    }).then(function (r) {
+      if (!r.ok) throw new Error("Supabase " + r.status);
+      return { title: sn.title || "", handle: sn.customUrl || "" };
+    });
+  }).then(function (ch) {
+    if (!ch) return;
+    show('<div class="ok">✓</div><h1>کانال وصل شد</h1>' +
+      '<p>کانال <b>' + escapeHtml(ch.title) + '</b>' + (ch.handle ? ' (' + escapeHtml(ch.handle) + ')' : '') + ' با موفقیت تایید شد. حالا می‌تونی آگهی ثبت کنی.</p>' +
+      '<a class="btn" href="https://t.me/YThiringai/app?startapp=yt_connected">برگرد به مینی‌اپ</a>' +
+      '<p class="muted">توکن گوگل ذخیره نشده — فقط اسم و شناسه کانال ثبت شد.</p>');
+  }).catch(function (e) {
+    fail("خطا در تایید کانال (" + escapeHtml(e.message || "نامشخص") + ") — دوباره تلاش کن.");
+  });
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+})();
+</script>
+</body>
+</html>

@@ -526,7 +526,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v116</span>
+<span class="app-version" id="app-version">v117</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -541,7 +541,15 @@
    Telegram bot via Telegram.WebApp.sendData, never directly to Supabase. */
 const CONFIG = {
   SUPABASE_URL: "https://ohgocudnifnjqbtuivic.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oZ29jdWRuaWZuanFidHVpdmljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2OTY0OTcsImV4cCI6MjEwOTI3MjQ5N30.3loxkxf6kQy2CcOF0CugHbgG-w5dcpIOio7YN-xrcd4"
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oZ29jdWRuaWZuanFidHVpdmljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2OTY0OTcsImV4cCI6MjEwOTI3MjQ5N30.3loxkxf6kQy2CcOF0CugHbgG-w5dcpIOio7YN-xrcd4",
+  /* v117: Google OAuth client id for the employer YouTube connect
+     (implicit flow — the id is public, there is NO secret to keep).
+     The client is a Web application in Google Cloud Console with the
+     redirect URI https://ythiring.pages.dev/oauth-callback.html and
+     the YouTube Data API v3 enabled. Empty until the admin creates it
+     and pastes the id here — the connect button then explains that
+     the setup is not done yet instead of opening a broken login. */
+  GOOGLE_CLIENT_ID: ""
 };
 
 /* ================= constants ================= */
@@ -695,6 +703,154 @@ function recordOnboarding(role) {
   if (!src) return;
   sbInsert("onboarding_responses", { telegram_id: me().id, source: src, role: role }).then(function () {}, function () {});
 }
+/* ================= v117: employer YouTube connect =================
+   User order 2026-11-14: an employer may ONLY register with their OWN
+   YouTube account — a real Google login with the youtube.readonly
+   scope, verified against the YouTube Data API (channels?mine=true).
+   The flow is implicit OAuth (response_type=token): no backend, no
+   client secret — the access token is used once by oauth-callback.html
+   and never stored; only the channel identity lands in the
+   employer_youtube table (latest row per telegram_id wins).
+   The gate covers OLD users too (user order 2026-11-14 11:40): an
+   employer who registered before v117 hits the same connect screen
+   the first time they open the post tab — the check is on the channel
+   row, not on the registration date.
+   Anti-spoofing: the connect URL carries state=<telegram_id>.<nonce>;
+   the callback writes the nonce with the row, and the app accepts a
+   row only when its nonce matches the one this device generated (or
+   when this device never started a flow — e.g. the user connected on
+   another device — in which case the latest row is accepted). */
+const YT_REDIRECT_URI = "https://ythiring.pages.dev/oauth-callback.html";
+const YT_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
+function ytNonceKey() { return "yt_yt_nonce_" + me().id; }
+function ytNonce() {
+  let n = "";
+  try { n = store.get(ytNonceKey()) || ""; } catch (e) {}
+  if (!n) {
+    n = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    try { store.set(ytNonceKey(), n); } catch (e) {}
+  }
+  return n;
+}
+function youtubeChannelUrl(ch) {
+  if (!ch) return "";
+  if (ch.channel_handle) return "https://youtube.com/" + ch.channel_handle.replace(/^@?/, "@");
+  if (ch.channel_id) return "https://youtube.com/channel/" + ch.channel_id;
+  return "";
+}
+async function loadEmployerYoutube() {
+  // Returns the latest verified channel for this Telegram id, or null.
+  // Cached in state.employerYt (undefined = not checked yet this
+  // session); callers use ensureEmployerYoutube() for the cached path.
+  if (MOCK) {
+    const rows = MOCK_YT.filter(function (r) { return r.telegram_id === me().id; });
+    state.employerYt = rows.length ? rows[rows.length - 1] : null;
+    return state.employerYt;
+  }
+  try {
+    const rows = await sbSelect("employer_youtube", { telegram_id: "eq." + me().id, order: "verified_at.desc", limit: 1 });
+    if (!rows || !rows.length) { state.employerYt = null; return null; }
+    const row = rows[0];
+    let stored = "";
+    try { stored = store.get(ytNonceKey()) || ""; } catch (e) {}
+    if (row.nonce && stored && row.nonce !== stored) { state.employerYt = null; return null; }
+    state.employerYt = row;
+    return row;
+  } catch (e) {
+    // A failed check must not lock the employer out of everything —
+    // the post gate treats an unchecked session as "no channel" and
+    // shows the connect screen (with a retry), which is safe either way.
+    state.employerYt = null;
+    return null;
+  }
+}
+async function ensureEmployerYoutube() {
+  if (state.employerYt !== undefined) return state.employerYt;
+  return loadEmployerYoutube();
+}
+function mockConnectYoutube() {
+  // Preview-only simulated connect: the suite (and the preview-mode
+  // button) uses it instead of real Google OAuth.
+  const row = { telegram_id: me().id, channel_id: "UCmock111111", channel_title: "کانال تستی کالی", channel_handle: "@kali_test", nonce: ytNonce(), verified_at: new Date().toISOString() };
+  MOCK_YT.push(row);
+  state.employerYt = row;
+  return row;
+}
+function mockClearYoutube() {
+  for (let i = MOCK_YT.length - 1; i >= 0; i--) if (MOCK_YT[i].telegram_id === me().id) MOCK_YT.splice(i, 1);
+  state.employerYt = null;
+}
+function buildYoutubeAuthUrl() {
+  const params = new URLSearchParams({
+    client_id: CONFIG.GOOGLE_CLIENT_ID,
+    redirect_uri: YT_REDIRECT_URI,
+    response_type: "token",
+    scope: YT_SCOPE,
+    state: me().id + "." + ytNonce(),
+    include_granted_scopes: "false",
+    prompt: "consent"
+  });
+  return "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
+}
+function startYoutubeConnect() {
+  // Real flow: Google login opens in the phone's browser (the OAuth
+  // redirect leaves the WebView) — the callback page writes the
+  // verified channel, then links back with ?startapp=yt_connected.
+  if (MOCK) {
+    mockConnectYoutube();
+    showToast("کانال یوتیوب وصل شد");
+    setRole("employer");
+    switchTab(homeTab());
+    return;
+  }
+  if (!CONFIG.GOOGLE_CLIENT_ID) {
+    showToast("اتصال یوتیوب هنوز تنظیم نشده — با ادمین در تماس باش");
+    return;
+  }
+  const url = buildYoutubeAuthUrl();
+  try {
+    if (tg && tg.openLink) tg.openLink(url);
+    else window.open(url, "_blank");
+  } catch (e) {
+    window.open(url, "_blank");
+  }
+}
+function renderYtConnect() {
+  // The connect screen: shown instead of the employer home until a
+  // verified channel exists. When one already exists (returning from
+  // the OAuth callback, or an old employer who connected earlier) it
+  // advances straight to the employer home — no dead end.
+  const ch = state.employerYt;
+  if (ch) {
+    setRole("employer");
+    switchTab(homeTab());
+    return;
+  }
+  if (state.ytConnectChecking) {
+    viewEl().innerHTML = '<div class="welcome"><div class="welcome-hero"><div class="welcome-title">در حال بررسی…</div></div></div>';
+    return;
+  }
+  viewEl().innerHTML = '<div class="welcome">' +
+    '<div class="welcome-hero"><div class="onb-tile t-yt">' + (ONB_META["یوتیوب"] ? ONB_META["یوتیوب"].svg : "") + '</div>' +
+    '<div class="welcome-title">اتصال حساب یوتیوب</div>' +
+    '<div class="welcome-q" style="font-size:14px;line-height:1.9">برای ثبت آگهی به‌عنوان کارفرما، باید کانال یوتیوبت رو با حساب گوگلت وصل کنی — اینطوری معلوم می‌شه کانال مال خودته و آگهی فقط با اسم کانال واقعی ثبت می‌شه.</div></div>' +
+    '<button type="button" class="btn" id="yt-connect-btn" style="width:100%;padding:14px">اتصال یوتیوب</button>' +
+    '<button type="button" class="btn btn-ghost" id="yt-connect-back" style="width:100%">بازگشت</button>' +
+    '<div class="welcome-note">حساب گوگلت فقط برای تایید کانال استفاده می‌شه — هیچ توکنی ذخیره نمی‌شه.</div>' +
+    '</div>';
+  document.getElementById("yt-connect-btn").addEventListener("click", function () { startYoutubeConnect(); });
+  document.getElementById("yt-connect-back").addEventListener("click", function () { showWelcome(); });
+}
+async function openYtConnect() {
+  // Entry point for every gate: re-check the channel, then show the
+  // connect screen (which auto-advances when a channel is found).
+  state.ytConnectChecking = true;
+  state.view = { name: "yt-connect" };
+  render();
+  try { await loadEmployerYoutube(); } catch (e) {}
+  state.ytConnectChecking = false;
+  if (state.view.name === "yt-connect") render();
+}
 /* v94: per-source icon + subtitle for the professional onboarding rows
    (line icons, no emojis; brand-tinted tiles). */
 const ONB_META = {
@@ -768,6 +924,10 @@ function getLaunchSource() {
   if (!raw) return { key: "telegram", label: "تلگرام" };
   if (raw === "channel") return { key: "channel", label: "کانال تلگرام" };
   if (raw === "menu") return { key: "menu", label: "منوی ربات" };
+  // v117: the OAuth callback links back with ?startapp=yt_connected
+  // after the YouTube channel is verified — the boot routes to the
+  // connect screen, which auto-advances to the employer home.
+  if (raw === "yt_connected") return { key: "yt_connected", label: "اتصال یوتیوب" };
   if (raw.indexOf("invite_") === 0) return { key: "invite", label: "دعوت یکی از کاربران" };
   if (raw.indexOf("job_") === 0) return { key: "job", label: "آگهی شماره " + raw.slice(4), id: parseInt(raw.slice(4), 10) || null };
   return { key: "link", label: "لینک «" + raw + "»" };
@@ -987,6 +1147,18 @@ const MOCK_MESSAGES = [
   { id: 201, application_id: 101, sender_id: 777, sender_name: "مریم", body: "سلام! نمونه‌هام رو دیدید؟", image: "", created_at: "2026-11-03T09:20:00Z" },
   { id: 202, application_id: 101, sender_id: 111111, sender_name: "کالی", body: "سلام مریم، بله دیدم — خیلی خوبه.", image: "", created_at: "2026-11-03T09:35:00Z" }
 ];
+/* v117: mock verified YouTube channels (preview only) — the same shape
+   as the employer_youtube table's latest row per telegram_id. Seeded
+   for every Telegram id the suite (and the mock world) uses — the
+   fallback user 111111, the admin 1335115151 and the non-admin
+   employer 999 — so the mock employers are already registered and the
+   earlier sections keep passing the gate; the v117 checks clear the
+   row for the current user to test the gate itself. */
+const MOCK_YT = [
+  { telegram_id: 111111, channel_id: "UCmock111111", channel_title: "کانال تستی کالی", channel_handle: "@kali_test", nonce: "", verified_at: "2026-11-03T08:00:00Z" },
+  { telegram_id: 1335115151, channel_id: "UCmockadmin", channel_title: "کانال کالی", channel_handle: "@kali_test", nonce: "", verified_at: "2026-11-03T08:00:00Z" },
+  { telegram_id: 999, channel_id: "UCmock999", channel_title: "کانال رضا", channel_handle: "@reza_test", nonce: "", verified_at: "2026-11-03T08:00:00Z" }
+];
 
 /* ================= state ================= */
 const state = {
@@ -1025,6 +1197,8 @@ const state = {
   editingJobId: null, // v62: id of the ad being edited (null = new post)
   empNameEditing: false, // v108: the employer profile name edit is open
   flNameEditing: false, // v116: the freelancer profile name edit is open
+  employerYt: undefined, // v117: verified YouTube channel for this employer (undefined = not checked yet, null = none)
+  ytConnectChecking: false, // v117: the yt-connect view is waiting on the channel check
 };
 
 /* ================= helpers ================= */
@@ -1877,6 +2051,16 @@ function renderPost() {
 }
 async function submitPostJob(ev) {
   ev.preventDefault();
+  // v117: defense in depth — no ad is ever written without a verified
+  // YouTube channel, even if the form was reached another way.
+  if (getRole() === "employer") {
+    await ensureEmployerYoutube();
+    if (!state.employerYt) {
+      showToast("اول کانال یوتیوبت رو وصل کن");
+      openYtConnect();
+      return;
+    }
+  }
   const workType = document.getElementById("p-work-type").getAttribute("data-value");
   const location = document.getElementById("p-location").value.trim();
   const budgetRaw = document.getElementById("p-budget").value.trim();
@@ -3850,6 +4034,10 @@ function renderWelcome() {
   viewEl().querySelectorAll("[data-role]").forEach(function (el) {
     el.addEventListener("click", function () {
       const picked = el.getAttribute("data-role");
+      // v117: an employer registers ONLY with their own YouTube
+      // account — the employer card goes through the connect gate
+      // (which auto-advances when a verified channel already exists).
+      if (picked === "employer") { openYtConnect(); return; }
       setRole(picked);
       // v92: the channel's job link (v65) opens the ad only for
       // freelancers — an employer goes to their own home, never to the
@@ -4017,6 +4205,20 @@ function renderEmployerProfile() {
       "</div>"
     : '<div><div class="card-title">' + esc(dispName) +
       '<button class="name-edit" id="emp-name-edit" type="button" aria-label="ویرایش اسم">' + ICONS.edit + '</button></div></div>';
+  // v117: the verified YouTube channel (the employer's registration
+  // proof) — shown with a link, plus a change/connect button. The
+  // channel is loaded by the profile tab before this render. The
+  // handle is NOT rendered as text: v111 keeps the profile view free
+  // of any "@..." string (the link itself still points at the channel).
+  const yt = state.employerYt;
+  const ytBlock = yt
+    ? '<div class="card" id="emp-yt-channel"><div class="card-title">کانال یوتیوب</div>' +
+      '<div class="meta"><a href="' + esc(youtubeChannelUrl(yt)) + '" target="_blank" rel="noopener">' + esc(yt.channel_title) + '</a></div>' +
+      '<div class="meta" style="padding-top:4px">کانال تاییدشده — آگهی‌ها با همین کانال ثبت می‌شن.</div>' +
+      '<div class="row-btns"><button class="btn btn-ghost" type="button" id="emp-yt-change">تغییر کانال</button></div></div>'
+    : '<div class="card" id="emp-yt-channel"><div class="card-title">کانال یوتیوب</div>' +
+      '<div class="meta">هنوز وصل نشده — برای ثبت آگهی باید کانال یوتیوبت رو با حساب گوگلت وصل کنی.</div>' +
+      '<div class="row-btns"><button class="btn" type="button" id="emp-yt-connect">اتصال یوتیوب</button></div></div>';
   viewEl().innerHTML = "<h2>پروفایل کارفرما</h2>" +
     '<div class="card profile-card">' +
     // v110 (user order 2026-11-13): the pencil on the employer photo is
@@ -4030,6 +4232,7 @@ function renderEmployerProfile() {
     nameBlock + "</div>" +
     '<div class="meta" style="text-align:center;padding:0 14px 14px;">' + esc(hint) + "</div>" +
     "</div>" +
+    ytBlock +
     '<div class="row-btns"><button class="btn" type="button" id="emp-my-jobs">آگهی‌های من</button>' +
     '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
     (ph.source === "manual" ? '<div class="row-btns"><button class="btn btn-ghost" type="button" id="emp-photo-remove">حذف عکس پروفایل</button></div>' : "");
@@ -4083,6 +4286,12 @@ function renderEmployerProfile() {
   });
   document.getElementById("emp-my-jobs").addEventListener("click", function () { switchTab("my-jobs"); });
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
+  // v117: the channel buttons — change re-runs the connect flow (the
+  // new row becomes the latest), connect starts it for the first time.
+  const ytChangeBtn = document.getElementById("emp-yt-change");
+  if (ytChangeBtn) ytChangeBtn.addEventListener("click", function () { openYtConnect(); });
+  const ytConnectBtn = document.getElementById("emp-yt-connect");
+  if (ytConnectBtn) ytConnectBtn.addEventListener("click", function () { openYtConnect(); });
 }
 
 function bindBack(tab) {
@@ -4154,11 +4363,12 @@ function render() {
   // The welcome and onboarding screens have no tab bar (choose first);
   // neither does the chat page (it has its own back button + fixed
   // composer).
-  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "onboarding" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
+  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "onboarding" || state.view.name === "yt-connect" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
   renderTabs();
   switch (state.view.name) {
     case "onboarding": renderOnboarding(); break;
     case "welcome": renderWelcome(); break;
+    case "yt-connect": renderYtConnect(); break;
     case "job-detail": openJobDetail(state.view.jobId); break;
     case "post": renderPost(); break;
     case "my-apps": renderMyApplications(); break;
@@ -4192,6 +4402,14 @@ async function switchTab(tab) {
   state.tab = tab;
   state.error = "";
   if (tab === "post") {
+    // v117: the post tab is gated on a verified YouTube channel — an
+    // employer who registered before v117 (an OLD user) hits the same
+    // connect screen as a new one; freelancers never reach this branch
+    // (the role guard above already sent them home).
+    if (getRole() === "employer") {
+      await ensureEmployerYoutube();
+      if (!state.employerYt) { openYtConnect(); return; }
+    }
     state.view = { name: "post" };
     render();
   } else if (tab === "my-apps") {
@@ -4230,6 +4448,8 @@ async function switchTab(tab) {
       if (getRole() === "employer") await loadReceivedApplications();
       else await loadMyApplications();
     } catch (e) {}
+    // v117: the employer profile shows the verified YouTube channel.
+    if (getRole() === "employer") { try { await ensureEmployerYoutube(); } catch (e) {} }
     render();
   }
 }
@@ -4254,7 +4474,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v116 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v117 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -4286,6 +4506,11 @@ async function switchTab(tab) {
     // database wipe alone never re-asks them). After answering they pick
     // a role again on the welcome screen.
     if (getOnboardVersion() !== ONBOARD_VERSION) { state.view = { name: "onboarding" }; render(); }
+    // v117: back from the YouTube OAuth callback — checked BEFORE the
+    // no-role branch, because the returning user has no role yet (the
+    // role is set only once the channel is found). The connect screen
+    // re-checks the channel and advances to the employer home itself.
+    else if (getLaunchSource().key === "yt_connected") { openYtConnect(); }
     else if (!getRole()) { state.view = { name: "welcome" }; render(); }
     else if (dj) { preload.then(function () { openJobDetail(dj); }); }
     else switchTab(homeTab());
@@ -4319,7 +4544,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, getFreelancerName: getFreelancerName, saveFreelancerName: saveFreelancerName, displayFreelancerName: displayFreelancerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, requestPhotoUpdate: requestPhotoUpdate, refreshPhotos: refreshPhotos, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, getFreelancerName: getFreelancerName, saveFreelancerName: saveFreelancerName, displayFreelancerName: displayFreelancerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, requestPhotoUpdate: requestPhotoUpdate, refreshPhotos: refreshPhotos, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply, submitPostJob: submitPostJob, loadEmployerYoutube: loadEmployerYoutube, ensureEmployerYoutube: ensureEmployerYoutube, mockConnectYoutube: mockConnectYoutube, mockClearYoutube: mockClearYoutube, buildYoutubeAuthUrl: buildYoutubeAuthUrl, openYtConnect: openYtConnect, renderYtConnect: renderYtConnect };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
