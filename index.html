@@ -526,7 +526,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v118</span>
+<span class="app-version" id="app-version">v119</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -792,6 +792,9 @@ function buildYoutubeAuthUrl() {
   return "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
 }
 function startYoutubeConnect() {
+  // v119: the change flow ends here — a fresh connect replaces the
+  // channel, so the force flag must not survive into the next gate.
+  state.ytConnectForce = false;
   // Real flow: Google login opens in the phone's browser (the OAuth
   // redirect leaves the WebView) — the callback page writes the
   // verified channel, then links back with ?startapp=yt_connected.
@@ -819,8 +822,10 @@ function renderYtConnect() {
   // verified channel exists. When one already exists (returning from
   // the OAuth callback, or an old employer who connected earlier) it
   // advances straight to the employer home — no dead end.
+  // v119: forced (change channel) never auto-advances — the screen
+  // stays so the employer can connect a different channel.
   const ch = state.employerYt;
-  if (ch) {
+  if (ch && !state.ytConnectForce) {
     setRole("employer");
     switchTab(homeTab());
     return;
@@ -833,22 +838,33 @@ function renderYtConnect() {
     '<div class="welcome-hero"><div class="onb-tile t-yt">' + (ONB_META["یوتیوب"] ? ONB_META["یوتیوب"].svg : "") + '</div>' +
     '<div class="welcome-title">اتصال حساب یوتیوب</div>' +
     '<div class="welcome-q" style="font-size:14px;line-height:1.9">برای ثبت آگهی به‌عنوان کارفرما، باید کانال یوتیوبت رو با حساب گوگلت وصل کنی — اینطوری معلوم می‌شه کانال مال خودته و آگهی فقط با اسم کانال واقعی ثبت می‌شه.</div></div>' +
+    (state.ytConnectForce && ch ? '<div class="welcome-note" style="text-align:center">کانال فعلی: ' + esc(ch.channel_title) + ' — با اتصال حساب دیگر، این کانال جایگزین می‌شود.</div>' : "") +
     '<button type="button" class="btn" id="yt-connect-btn" style="width:100%;padding:14px">اتصال یوتیوب</button>' +
     '<button type="button" class="btn btn-ghost" id="yt-connect-back" style="width:100%">بازگشت</button>' +
     '<div class="welcome-note">حساب گوگلت فقط برای تایید کانال استفاده می‌شه — هیچ توکنی ذخیره نمی‌شه.</div>' +
     '</div>';
   document.getElementById("yt-connect-btn").addEventListener("click", function () { startYoutubeConnect(); });
-  document.getElementById("yt-connect-back").addEventListener("click", function () { showWelcome(); });
+  document.getElementById("yt-connect-back").addEventListener("click", function () { state.ytConnectForce = false; if (state.employerYt) switchTab("profile"); else showWelcome(); });
 }
-async function openYtConnect() {
+async function openYtConnect(force) {
   // Entry point for every gate: re-check the channel, then show the
   // connect screen (which auto-advances when a channel is found).
-  state.ytConnectChecking = true;
+  // v119: force=true comes from the profile "change channel" button —
+  // the employer already has a channel, so skip the re-check and show
+  // the connect screen instead of auto-advancing home; the new OAuth
+  // flow writes a fresh row and the latest row wins.
+  state.ytConnectForce = !!force;
+  if (!force) {
+    state.ytConnectChecking = true;
+    state.view = { name: "yt-connect" };
+    render();
+    try { await loadEmployerYoutube(); } catch (e) {}
+    state.ytConnectChecking = false;
+    if (state.view.name === "yt-connect") render();
+    return;
+  }
   state.view = { name: "yt-connect" };
   render();
-  try { await loadEmployerYoutube(); } catch (e) {}
-  state.ytConnectChecking = false;
-  if (state.view.name === "yt-connect") render();
 }
 /* v94: per-source icon + subtitle for the professional onboarding rows
    (line icons, no emojis; brand-tinted tiles). */
@@ -1198,6 +1214,7 @@ const state = {
   flNameEditing: false, // v116: the freelancer profile name edit is open
   employerYt: undefined, // v117: verified YouTube channel for this employer (undefined = not checked yet, null = none)
   ytConnectChecking: false, // v117: the yt-connect view is waiting on the channel check
+  ytConnectForce: false, // v119: change-channel flow — show the connect screen even though a channel exists
 };
 
 /* ================= helpers ================= */
@@ -4288,7 +4305,7 @@ function renderEmployerProfile() {
   // v117: the channel buttons — change re-runs the connect flow (the
   // new row becomes the latest), connect starts it for the first time.
   const ytChangeBtn = document.getElementById("emp-yt-change");
-  if (ytChangeBtn) ytChangeBtn.addEventListener("click", function () { openYtConnect(); });
+  if (ytChangeBtn) ytChangeBtn.addEventListener("click", function () { openYtConnect(true); });
   const ytConnectBtn = document.getElementById("emp-yt-connect");
   if (ytConnectBtn) ytConnectBtn.addEventListener("click", function () { openYtConnect(); });
 }
@@ -4473,7 +4490,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v118 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v119 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
