@@ -545,7 +545,7 @@ const CONFIG = {
   /* v117: Google OAuth client id for the employer YouTube connect
      (implicit flow — the id is public, there is NO secret to keep).
      The client is a Web application in Google Cloud Console with the
-     redirect URI https://ythiring.pages.dev/oauth-callback.html and
+     redirect URI https://ythiring.pages.dev/oauth-callback and
      the YouTube Data API v3 enabled. Empty until the admin creates it
      and pastes the id here — the connect button then explains that
      the setup is not done yet instead of opening a broken login. */
@@ -720,7 +720,7 @@ function recordOnboarding(role) {
    row only when its nonce matches the one this device generated (or
    when this device never started a flow — e.g. the user connected on
    another device — in which case the latest row is accepted). */
-const YT_REDIRECT_URI = "https://ythiring.pages.dev/oauth-callback.html";
+const YT_REDIRECT_URI = "https://ythiring.pages.dev/oauth-callback"; // the clean Pages URL (no .html — Pages 308-redirects the .html form)
 const YT_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
 function ytNonceKey() { return "yt_yt_nonce_" + me().id; }
 function ytNonce() {
