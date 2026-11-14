@@ -29,7 +29,10 @@
    youtube.readonly), writes ONLY the channel identity to the
    employer_youtube table, and never stores the access token anywhere.
    The user then taps back into Telegram with ?startapp=yt_connected,
-   where the mini app re-checks the row and opens the employer home. */
+   where the mini app re-checks the row and opens the employer home.
+   v120 (2026-11-14): YouTube error body is parsed — a 403 with reason
+   youtubeSignupRequired (account has NO YouTube channel) now shows the
+   clear no-channel message instead of a bare "YouTube 403". */
 (function () {
   var SUPABASE_URL = "https://ohgocudnifnjqbtuivic.supabase.co";
   var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oZ29jdWRuaWZuanFidHVpdmljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2OTY0OTcsImV4cCI6MjEwOTI3MjQ5N30.3loxkxf6kQy2CcOF0CugHbgG-w5dcpIOio7YN-xrcd4";
@@ -51,8 +54,13 @@
   fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", {
     headers: { "Authorization": "Bearer " + token }
   }).then(function (r) {
-    if (!r.ok) throw new Error("YouTube " + r.status);
-    return r.json();
+    if (r.ok) return r.json();
+    return r.json().catch(function () { return {}; }).then(function (body) {
+      var err = (body.error && body.error.errors && body.error.errors[0]) || {};
+      var e = new Error("YouTube " + r.status + (err.reason ? " " + err.reason : ""));
+      e.ytReason = err.reason || "";
+      throw e;
+    });
   }).then(function (data) {
     var item = (data.items || [])[0];
     if (!item) { fail("این حساب گوگل کانال یوتیوب نداره — با حسابی وارد شو که کانال داره."); return; }
@@ -83,7 +91,13 @@
       '<a class="btn" href="https://t.me/YThiringai/app?startapp=yt_connected">برگرد به مینی‌اپ</a>' +
       '<p class="muted">توکن گوگل ذخیره نشده — فقط اسم و شناسه کانال ثبت شد.</p>');
   }).catch(function (e) {
-    fail("خطا در تایید کانال (" + escapeHtml(e.message || "نامشخص") + ") — دوباره تلاش کن.");
+    if (e.ytReason === "youtubeSignupRequired") {
+      fail("این حساب گوگل کانال یوتیوب نداره — اول تو یوتیوب یه کانال بساز، یا با حسابی وارد شو که کانال داره.");
+    } else if (e.ytReason === "quotaExceeded" || e.ytReason === "dailyLimitExceeded") {
+      fail("سهمیه روزانه یوتیوب تموم شده — چند ساعت دیگه دوباره تلاش کن.");
+    } else {
+      fail("خطا در تایید کانال (" + escapeHtml(e.message || "نامشخص") + ") — دوباره تلاش کن.");
+    }
   });
   function escapeHtml(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
