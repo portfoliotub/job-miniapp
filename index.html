@@ -226,6 +226,10 @@
     color: var(--link);
     border-radius: 999px; padding: 2px 9px;
   }
+  /* v122: verification — green badge + numbered step circles. */
+  .chip-verified { background: #e6f7ee; color: #137333; }
+  .step-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #e8eef4; color: var(--link); font-weight: 700; font-size: 14px; flex: none; }
+  .step-num.done { background: #1faa59; color: #fff; }
   .meta { font-size: 13px; color: var(--hint); }
   .desc { font-size: 14px; margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; }
   .badge {
@@ -535,7 +539,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v121</span>
+<span class="app-version" id="app-version">v122</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -775,6 +779,77 @@ async function loadEmployerYoutube() {
 async function ensureEmployerYoutube() {
   if (state.employerYt !== undefined) return state.employerYt;
   return loadEmployerYoutube();
+}
+/* ================= v122: freelancer verification =================
+   Phone (bot contact-share at registration) + one intro video (full face
+   to camera, then slow turn to left/right profile). The row lives in the
+   freelancer_verification table; the app only INSERTs its own row (if
+   missing) and SELECTs it — every status change is written by the bot
+   (service_role) or the review worker. Mirrors loadEmployerYoutube(). */
+async function loadVerification() {
+  if (MOCK) {
+    const rows = MOCK_VERIFICATION.filter(function (r) { return r.telegram_id === me().id; });
+    state.verification = rows.length ? rows[rows.length - 1] : null;
+    return state.verification;
+  }
+  try {
+    const rows = await sbSelect("freelancer_verification", { telegram_id: "eq." + me().id, limit: 1 });
+    state.verification = (rows && rows.length) ? rows[0] : null;
+    return state.verification;
+  } catch (e) {
+    // A failed check must not lock the freelancer out of everything —
+    // the gates treat an unchecked session as "not verified" and show
+    // the verify screen (with a retry), which is safe either way.
+    state.verification = null;
+    return null;
+  }
+}
+async function ensureVerification() {
+  if (state.verification !== undefined) return state.verification;
+  return loadVerification();
+}
+function isVerified(v) {
+  return !!(v && v.phone_verified && v.video_status === "approved");
+}
+async function ensureVerificationRow() {
+  // The bot keys off this row (/start sends the contact keyboard when a
+  // row exists and the phone is unverified), so the app creates it the
+  // first time the freelancer opens the verify screen. Best-effort and
+  // idempotent — a duplicate insert just means the row already exists.
+  if (MOCK) return;
+  try {
+    const v = await ensureVerification();
+    if (v) return;
+    await sbInsert("freelancer_verification", { telegram_id: me().id, phone_verified: false, video_status: "none" });
+    state.verification = { telegram_id: me().id, phone_verified: false, video_status: "none" };
+  } catch (e) {}
+}
+function mockSetVerification(v) {
+  // Preview-only: the suite flips the mock user's verification state.
+  for (let i = MOCK_VERIFICATION.length - 1; i >= 0; i--) {
+    if (MOCK_VERIFICATION[i].telegram_id === me().id) MOCK_VERIFICATION.splice(i, 1);
+  }
+  if (v) MOCK_VERIFICATION.push(v);
+  state.verification = v || null;
+}
+async function loadVerificationMap(ids) {
+  // Employer badges: one fetch for every freelancer id on screen.
+  if (!ids || !ids.length) return;
+  if (MOCK) {
+    ids.forEach(function (id) {
+      const rows = MOCK_VERIFICATION.filter(function (r) { return r.telegram_id === id; });
+      if (rows.length) state.verificationById[id] = rows[rows.length - 1];
+    });
+    return;
+  }
+  try {
+    const rows = await sbSelect("freelancer_verification", { select: "telegram_id,phone_verified,video_status", telegram_id: "in.(" + ids.join(",") + ")" }) || [];
+    rows.forEach(function (r) { state.verificationById[r.telegram_id] = r; });
+  } catch (e) {}
+}
+function verificationBadge(telegramId) {
+  const v = state.verificationById[telegramId];
+  return (v && isVerified(v)) ? ' <span class="chip chip-verified">✓ احراز هویت شده</span>' : "";
 }
 function mockConnectYoutube() {
   // Preview-only simulated connect: the suite (and the preview-mode
@@ -1191,12 +1266,23 @@ const MOCK_YT = [
   { telegram_id: 999, channel_id: "UCmock999", channel_title: "کانال رضا", channel_handle: "@reza_test", nonce: "", verified_at: "2026-11-03T08:00:00Z" }
 ];
 
+/* v122: freelancer verification (phone via bot contact-share + intro video).
+   Mock rows mirror the live freelancer_verification table. 111111 (کالی) and
+   777 (مریم) are fully verified; 888 (امیر) never started. */
+const MOCK_VERIFICATION = [
+  { telegram_id: 111111, phone_verified: true, phone_hash: "mockhash111111", video_status: "approved", video_file_id: "mockvid111111", video_submitted_at: "2026-11-16T10:00:00Z", reviewed_at: "2026-11-16T10:05:00Z", review_note: "" },
+  { telegram_id: 777, phone_verified: true, phone_hash: "mockhash777", video_status: "approved", video_file_id: "mockvid777", video_submitted_at: "2026-11-16T10:00:00Z", reviewed_at: "2026-11-16T10:05:00Z", review_note: "" },
+  { telegram_id: 888, phone_verified: false, phone_hash: null, video_status: "none", video_file_id: null, video_submitted_at: null, reviewed_at: null, review_note: "" }
+];
+
 /* ================= state ================= */
 const state = {
   tab: "my-jobs",
   view: { name: "my-jobs" }, // welcome | job-detail | post | my-apps | my-jobs | job-apps | chat | freelancer-profile | profile
   myApplications: [],
   receivedApps: [], // v48: applications received on the employer's ads
+  verification: undefined, // v122: own freelancer_verification row (undefined = not checked this session)
+  verificationById: {}, // v122: telegram_id -> verification row, for the employer badges
   myJobs: [],
   jobApplications: {}, // jobId -> [applications]
   chatMessages: {}, // applicationId -> [messages]
@@ -1677,6 +1763,8 @@ async function loadReceivedApplications() {
   });
   all.sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
   state.receivedApps = all;
+  // v122: verification badges on the employer rows.
+  await loadVerificationMap(all.map(function (a) { return a.freelancer_id; }));
   updateCache({ received: state.receivedApps }); // v81: instant first paint next open
 }
 async function findJob(jobId) {
@@ -1796,6 +1884,10 @@ async function openJobDetail(jobId) {
   }
   const mine = job.employer_id === me().id;
   const alreadyApplied = state.myApplications.some(function (a) { return a.job_id === jobId; });
+  // v122: the apply form needs a verified identity (phone + approved
+  // intro video). Checked here so the detail can show a locked card
+  // instead of the form; submitApply re-checks (defense in depth).
+  const _verified = getRole() === "freelancer" ? isVerified(await ensureVerification()) : false;
   let html = '<button class="back" data-back>› بازگشت</button>' +
     '<div class="card"><div class="card-head">' + photoAvatarHtml(job.employer_name || "کارفرما", job.employer_photo || "") +
     '<div><div class="card-title">' + esc(job.title) + '</div><div class="meta">' + esc(job.employer_name || "کارفرما") + " · " + fmtDate(job.created_at) + "</div></div></div>" +
@@ -1818,7 +1910,7 @@ async function openJobDetail(jobId) {
   } else if (job.status === "filled") {
     // v109: the employer found a freelancer — nobody can apply anymore.
     html += '<div class="card" id="apply-filled"><span class="muted">این آگهی تکمیل شده است — کارفرما فریلنسر پیدا کرده و دیگر درخواست نمی‌پذیرد.</span></div>';
-  } else if (job.status === "open" && getRole() === "freelancer") {
+  } else if (job.status === "open" && getRole() === "freelancer" && _verified) {
     html += '<h2>ارسال درخواست</h2>' +
       '<form id="apply-form">' +
       '<label>لینک نمونه‌کارها (هر لینک در یک خط)</label>' +
@@ -1829,6 +1921,10 @@ async function openJobDetail(jobId) {
       '<textarea id="f-message" placeholder="چند جمله درباره تجربه و زمان تحویل…"></textarea>' +
       '<button class="btn" type="submit">ارسال درخواست</button>' +
       "</form>";
+  } else if (job.status === "open" && getRole() === "freelancer") {
+    // v122: unverified freelancer — the ad stays visible, the form does not.
+    html += '<div class="card" id="apply-locked"><span class="muted">برای ارسال درخواست، اول هویتت رو تایید کن (شماره تلفن + ویدیوی معرفی).</span></div>' +
+      '<button class="btn" type="button" id="apply-verify">تایید هویت</button>';
   } else if (job.status === "open") {
     // v92: the ad is open but the viewer is not a freelancer (e.g. an
     // employer who opened someone else's ad) — read-only, no form.
@@ -1838,6 +1934,8 @@ async function openJobDetail(jobId) {
   bindBack(homeTab());
   const seeApps = document.getElementById("see-apps");
   if (seeApps) seeApps.addEventListener("click", function () { openJobApplications(jobId); });
+  const verifyBtn = document.getElementById("apply-verify");
+  if (verifyBtn) verifyBtn.addEventListener("click", function () { openVerify(); });
   const form = document.getElementById("apply-form");
   if (form) {
     form.addEventListener("submit", function (ev) { submitApply(ev, jobId); });
@@ -1867,6 +1965,13 @@ async function submitApply(ev, jobId) {
     showToast("اول سوال‌ها رو جواب بده و نقش فریلنسر رو انتخاب کن");
     state.view = { name: getOnboardVersion() !== ONBOARD_VERSION ? "onboarding" : "welcome" };
     render();
+    return;
+  }
+  // v122: defense in depth — no application without a verified identity
+  // (phone + approved intro video), even if the form was reached another way.
+  if (!isVerified(await ensureVerification())) {
+    showToast("اول هویتت رو تایید کن");
+    openVerify();
     return;
   }
   // v109: defense in depth — a filled ad takes no applications, even if
@@ -2635,7 +2740,7 @@ function renderMyApplications() {
         const pv = recvPreviewText(a);
         let h = '<div class="card clickable recv-card" data-recv-card="' + a.id + '">' +
           (state.unread[a.id] ? '<span class="unread-dot"></span>' : "") +
-          '<div class="card-head profile-link">' + photoAvatarHtml(name, (a.freelancer_profile && a.freelancer_profile.photo) || "") + '<div class="card-title">' + esc(name) + "</div>" +
+          '<div class="card-head profile-link">' + photoAvatarHtml(name, (a.freelancer_profile && a.freelancer_profile.photo) || "") + '<div class="card-title">' + esc(name) + verificationBadge(a.freelancer_id) + "</div>" +
           '<button class="row-del-btn" type="button" data-del-app="' + a.id + '" aria-label="حذف چت">' + ICONS.trash + "</button></div>" +
           (pv ? '<p class="desc recv-msg">' + esc(pv) + "</p>" : "");
         return h + "</div>";
@@ -2798,6 +2903,8 @@ async function openJobApplications(jobId) {
   render();
   try {
     await loadJobApplications(jobId);
+    // v122: verification badges on the application cards.
+    await loadVerificationMap((state.jobApplications[jobId] || []).map(function (a) { return a.freelancer_id; }));
     state.loading = false;
   } catch (e) {
     state.loading = false;
@@ -2844,7 +2951,7 @@ function renderJobApplications() {
       // show on the request; tapping it opens the chat with them.
       const prof = a.freelancer_profile || null;
       let h = '<div class="card clickable" data-app-card="' + a.id + '">' +
-        '<div class="card-head">' + photoAvatarHtml(a.freelancer_name || "فریلنسر", (a.freelancer_profile && a.freelancer_profile.photo) || "") + '<div class="card-title">' + esc(a.freelancer_name || "فریلنسر") + "</div></div>" +
+        '<div class="card-head">' + photoAvatarHtml(a.freelancer_name || "فریلنسر", (a.freelancer_profile && a.freelancer_profile.photo) || "") + '<div class="card-title">' + esc(a.freelancer_name || "فریلنسر") + verificationBadge(a.freelancer_id) + "</div></div>" +
         '<div class="meta-row">' + statusBadge(a.status) +
         (a.price ? '<span class="meta">قیمت پیشنهادی: ' + esc(a.price) + "</span>" : "") +
         '<span class="meta">' + fmtDate(a.created_at) + "</span></div>" +
@@ -4045,6 +4152,81 @@ async function sendChatMessage() {
 }
 
 /* ================= welcome & profile (v18) ================= */
+/* ================= v122: freelancer verification screen =================
+   Step 1 phone (bot contact-share), step 2 intro video (full face to
+   camera, then slow turn to left/right profile). The phone and the video
+   both arrive in the BOT chat, never in the app; this screen only shows
+   the state and polls the verification row every 10s while open, so a
+   share or an approval lands without a manual refresh. */
+function openVerify() {
+  state.view = { name: "verify" };
+  // Load the row first so a verified user never sees the "not done"
+  // state; the render below paints immediately and the load re-renders.
+  ensureVerification().then(function () { if (state.view.name === "verify") render(); }).catch(function () {});
+  render();
+}
+function verifyStepHtml(num, title, body, done) {
+  return '<div class="card"><div class="card-head"><span class="step-num' + (done ? " done" : "") + '">' + (done ? "✓" : num) + '</span><div class="card-title">' + title + "</div></div>" +
+    '<p class="desc">' + body + "</p></div>";
+}
+function verifySig(v) {
+  return v ? ((v.phone_verified ? "1" : "0") + "|" + v.video_status + "|" + (v.review_note || "")) : "null";
+}
+function renderVerify() {
+  const v = state.verification;
+  state.verifySig = verifySig(v);
+  const phoneDone = !!(v && v.phone_verified);
+  const vs = v ? v.video_status : "none";
+  const videoDone = vs === "approved";
+  let html = '<button class="back" data-back>› بازگشت</button><h2>تایید هویت</h2>' +
+    '<p class="desc">برای اینکه کارفرماها بهت اعتماد کنن و بتونی درخواست بفرستی، دو مرحله رو کامل کن. شماره تلفنت رو هیچ‌کس نمی‌بینه — فقط «تایید شده ✓» نشون داده می‌شه.</p>';
+  html += verifyStepHtml(1, "شماره تلفن", phoneDone
+    ? "شماره تلفنت تایید شد ✓"
+    : "توی چت ربات، دکمه «📱 اشتراک شماره تلفن» رو بزن. تلگرام خودش شماره رو تایید می‌کنه.", phoneDone);
+  if (!phoneDone) {
+    html += '<button class="btn" type="button" id="verify-open-bot">باز کردن چت ربات</button>';
+  }
+  let videoBody = "";
+  if (vs === "approved") videoBody = "ویدیوی معرفیت تایید شد ✓";
+  else if (vs === "pending") videoBody = "ویدیو دریافت شد — در حال بررسیه، نتیجه رو همین‌جا می‌بینی.";
+  else if (vs === "rejected") videoBody = "ویدیوت تایید نشد" + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره بفرست.";
+  else videoBody = "یه ویدیوی ۱۰–۱۵ ثانیه‌ای بگیر: اول رو به دوربین، اسمت رو بگو، بعد سرت رو آروم به چپ و راست بچرخون (نیم‌رخ).";
+  html += verifyStepHtml(2, "ویدیوی معرفی", videoBody, videoDone);
+  if (phoneDone && vs !== "pending" && vs !== "approved") {
+    html += '<button class="btn" type="button" id="verify-open-bot-video">فرستادن ویدیو توی چت ربات</button>';
+  }
+  if (isVerified(v)) {
+    html += '<div class="card"><span class="muted">هویتت تایید شد ✓ — حالا می‌تونی برای آگهی‌ها درخواست بفرستی.</span></div>';
+  }
+  viewEl().innerHTML = html;
+  bindBack(homeTab());
+  const botBtn = document.getElementById("verify-open-bot") || document.getElementById("verify-open-bot-video");
+  if (botBtn) botBtn.addEventListener("click", function () {
+    if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) Telegram.WebApp.openTelegramLink("https://t.me/YThiringai");
+    else window.open("https://t.me/YThiringai", "_blank");
+  });
+  ensureVerificationRow();
+  startVerifyPolling();
+}
+function startVerifyPolling() {
+  if (state.verifyTimer) return;
+  state.verifyTimer = setInterval(function () {
+    if (state.view.name !== "verify") { stopVerifyPolling(); return; }
+    loadVerification().then(function (v) {
+      if (state.view.name !== "verify") return;
+      if (verifySig(v) !== state.verifySig) renderVerify();
+      // v122: approved while a channel deep link is waiting — land on the ad.
+      if (isVerified(v)) {
+        const dj = deepJobId();
+        stopVerifyPolling();
+        if (dj) openJobDetail(dj); else switchTab(homeTab());
+      }
+    }).catch(function () {});
+  }, 10000);
+}
+function stopVerifyPolling() {
+  if (state.verifyTimer) { clearInterval(state.verifyTimer); state.verifyTimer = null; }
+}
 function renderWelcome() {
   const u = me();
   const src = getLaunchSource();
@@ -4071,11 +4253,15 @@ function renderWelcome() {
       // (which auto-advances when a verified channel already exists).
       if (picked === "employer") { openYtConnect(); return; }
       setRole(picked);
-      // v92: the channel's job link (v65) opens the ad only for
-      // freelancers — an employer goes to their own home, never to the
-      // apply form.
-      const dj = deepJobId();
-      if (dj && picked === "freelancer") openJobDetail(dj); else switchTab(homeTab());
+      // v122: a freelancer registers ONLY verified — the phone + video
+      // check runs before the home tab or the deep-linked ad (v92: the
+      // channel's job link opens the ad only for freelancers).
+      ensureVerification().then(function (v) {
+        if (isVerified(v)) {
+          const dj = deepJobId();
+          if (dj) openJobDetail(dj); else switchTab(homeTab());
+        } else openVerify();
+      }).catch(function () { openVerify(); });
     });
   });
   const back = document.getElementById("welcome-back");
@@ -4128,7 +4314,10 @@ function renderProfile() {
     '<textarea id="pf-bio">' + esc(p.bio || "") + "</textarea>" +
     '<div class="row-btns"><button class="btn" type="submit">ذخیره پروفایل</button>' +
     '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
-    "</form>";
+    "</form>" +
+    '<div class="card"><div class="card-head"><div class="card-title">تایید هویت</div></div>' +
+    '<p class="desc" id="profile-verify-desc">برای ارسال درخواست، هویتت باید تایید شده باشه (شماره تلفن + ویدیوی معرفی).</p>' +
+    '<button class="btn" type="button" id="profile-verify">تایید هویت</button></div>';
   document.getElementById("profile-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
     saveProfile({
@@ -4141,6 +4330,14 @@ function renderProfile() {
     });
     showToast("پروفایل ذخیره شد ✓");
   });
+  // v122: verification entry from the freelancer profile.
+  document.getElementById("profile-verify").addEventListener("click", function () { openVerify(); });
+  ensureVerification().then(function (v) {
+    const d = document.getElementById("profile-verify-desc");
+    if (d && isVerified(v)) d.textContent = "هویتت تایید شد ✓ — می‌تونی برای آگهی‌ها درخواست بفرستی.";
+    const b = document.getElementById("profile-verify");
+    if (b && isVerified(v)) b.textContent = "مشاهده تایید هویت";
+  }).catch(function () {});
   // v26: a dead photo URL falls back to the letter avatar.
   const photoImg = viewEl().querySelector(".avatar-photo");
   if (photoImg) photoImg.addEventListener("error", function () { photoImg.remove(); });
@@ -4392,15 +4589,17 @@ function renderTabs() {
 function render() {
   stopChatPolling();
   stopChatRealtime();
+  stopVerifyPolling(); // v122: the verify screen restarts its own poll when it renders
   // The welcome and onboarding screens have no tab bar (choose first);
   // neither does the chat page (it has its own back button + fixed
   // composer).
-  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "onboarding" || state.view.name === "yt-connect" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
+  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "onboarding" || state.view.name === "yt-connect" || state.view.name === "verify" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
   renderTabs();
   switch (state.view.name) {
     case "onboarding": renderOnboarding(); break;
     case "welcome": renderWelcome(); break;
     case "yt-connect": renderYtConnect(); break;
+    case "verify": renderVerify(); break;
     case "job-detail": openJobDetail(state.view.jobId); break;
     case "post": renderPost(); break;
     case "my-apps": renderMyApplications(); break;
@@ -4506,7 +4705,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v121 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v122 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -4576,7 +4775,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, getFreelancerName: getFreelancerName, saveFreelancerName: saveFreelancerName, displayFreelancerName: displayFreelancerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, requestPhotoUpdate: requestPhotoUpdate, refreshPhotos: refreshPhotos, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply, submitPostJob: submitPostJob, loadEmployerYoutube: loadEmployerYoutube, ensureEmployerYoutube: ensureEmployerYoutube, mockConnectYoutube: mockConnectYoutube, mockClearYoutube: mockClearYoutube, buildYoutubeAuthUrl: buildYoutubeAuthUrl, openYtConnect: openYtConnect, renderYtConnect: renderYtConnect };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, getFreelancerName: getFreelancerName, saveFreelancerName: saveFreelancerName, displayFreelancerName: displayFreelancerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, requestPhotoUpdate: requestPhotoUpdate, refreshPhotos: refreshPhotos, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply, submitPostJob: submitPostJob, loadEmployerYoutube: loadEmployerYoutube, ensureEmployerYoutube: ensureEmployerYoutube, mockConnectYoutube: mockConnectYoutube, mockClearYoutube: mockClearYoutube, getVerification: ensureVerification, setVerificationMock: mockSetVerification, openVerify: openVerify, isVerified: isVerified, buildYoutubeAuthUrl: buildYoutubeAuthUrl, openYtConnect: openYtConnect, renderYtConnect: renderYtConnect };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
