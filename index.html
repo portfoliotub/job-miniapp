@@ -247,6 +247,11 @@
   }
   input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 2px var(--link); }
   textarea { min-height: 84px; resize: vertical; }
+  /* v120: a <button> with width:auto does NOT fill its container in this
+     Chromium — it shrink-to-fits its content (a div.btn fills, a
+     button.btn does not). A full-width button needs an explicit width:
+     width:100% with the side margins zeroed (the parent's padding then
+     provides the inset), or it overflows by the 24px of those margins. */
   .btn {
     display: block; width: auto; padding: 12px; margin: 16px 12px 0;
     font: inherit; font-size: 15.5px; font-weight: 700; text-align: center;
@@ -526,7 +531,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v119</span>
+<span class="app-version" id="app-version">v120</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -839,8 +844,15 @@ function renderYtConnect() {
     '<div class="welcome-title">اتصال حساب یوتیوب</div>' +
     '<div class="welcome-q" style="font-size:14px;line-height:1.9">برای ثبت آگهی به‌عنوان کارفرما، باید کانال یوتیوبت رو با حساب گوگلت وصل کنی — اینطوری معلوم می‌شه کانال مال خودته و آگهی فقط با اسم کانال واقعی ثبت می‌شه.</div></div>' +
     (state.ytConnectForce && ch ? '<div class="welcome-note" style="text-align:center">کانال فعلی: ' + esc(ch.channel_title) + ' — با اتصال حساب دیگر، این کانال جایگزین می‌شود.</div>' : "") +
-    '<button type="button" class="btn" id="yt-connect-btn" style="width:100%;padding:14px">اتصال یوتیوب</button>' +
-    '<button type="button" class="btn btn-ghost" id="yt-connect-back" style="width:100%">بازگشت</button>' +
+    // v120: full-width buttons need an EXPLICIT width here. Two traps:
+    // (1) width:100% + the .btn 12px side margins = 24px wider than the
+    // screen, both edges cut off (the user's screenshot); (2) width:auto
+    // alone does NOT fill for a <button> in this Chromium — a synthetic
+    // test shows a div.btn fills 342px while a button.btn shrinks to its
+    // content (57px). So: width:100% with the side margins zeroed — the
+    // .welcome 12px padding provides the inset instead.
+    '<button type="button" class="btn" id="yt-connect-btn" style="width:100%;margin-left:0;margin-right:0;padding:14px">اتصال یوتیوب</button>' +
+    '<button type="button" class="btn btn-ghost" id="yt-connect-back" style="width:100%;margin-left:0;margin-right:0">بازگشت</button>' +
     '<div class="welcome-note">حساب گوگلت فقط برای تایید کانال استفاده می‌شه — هیچ توکنی ذخیره نمی‌شه.</div>' +
     '</div>';
   document.getElementById("yt-connect-btn").addEventListener("click", function () { startYoutubeConnect(); });
@@ -4490,7 +4502,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v119 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v120 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
