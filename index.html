@@ -230,6 +230,17 @@
   .chip-verified { background: #e6f7ee; color: #137333; }
   .step-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #e8eef4; color: var(--link); font-weight: 700; font-size: 14px; flex: none; }
   .step-num.done { background: #1faa59; color: #fff; }
+  /* v124: live-camera verification — the frame is the phone camera, the
+     white oval is the face guide; it turns green only when the face
+     sits exactly inside it (FaceDetector when the phone has it). */
+  .cam-frame { position: relative; width: 100%; aspect-ratio: 3 / 4; background: #000; border-radius: 12px; overflow: hidden; margin-top: 10px; }
+  .cam-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cam-oval { position: absolute; left: 50%; top: 50%; width: 62%; aspect-ratio: 3 / 4; transform: translate(-50%, -50%); border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0,0,0,0.45); pointer-events: none; }
+  .cam-oval.ok { border-color: #22c55e; box-shadow: 0 0 0 9999px rgba(0,0,0,0.45), 0 0 18px rgba(34,197,94,0.9); }
+  .cam-hint { text-align: center; font-size: 14px; margin: 10px 0 0; }
+  .cam-shots { display: flex; gap: 8px; margin-top: 10px; }
+  .cam-shots img { width: 72px; height: 96px; object-fit: cover; border-radius: 8px; border: 2px solid #22c55e; }
+  .cam-shots .cam-shot-label { font-size: 12px; color: var(--hint); text-align: center; margin-top: 2px; }
   .meta { font-size: 13px; color: var(--hint); }
   .desc { font-size: 14px; margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; }
   .badge {
@@ -539,7 +550,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v123</span>
+<span class="app-version" id="app-version">v124</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1275,6 +1286,11 @@ const MOCK_VERIFICATION = [
   { telegram_id: 888, phone_verified: false, phone_hash: null, video_status: "none", video_file_id: null, video_submitted_at: null, reviewed_at: null, review_note: "" }
 ];
 
+/* v124: live-camera verification photos (front + profile) the mock user
+   "sends" — mirrors the verification_photos table; the suite asserts
+   the send lands here with both shots. */
+const MOCK_VERIFICATION_PHOTOS = [];
+
 /* ================= state ================= */
 const state = {
   tab: "my-jobs",
@@ -1283,6 +1299,7 @@ const state = {
   receivedApps: [], // v48: applications received on the employer's ads
   verification: undefined, // v122: own freelancer_verification row (undefined = not checked this session)
   verificationById: {}, // v122: telegram_id -> verification row, for the employer badges
+  cam: null, // v124: live-camera verification state (null = camera closed)
   myJobs: [],
   jobApplications: {}, // jobId -> [applications]
   chatMessages: {}, // applicationId -> [messages]
@@ -1923,7 +1940,7 @@ async function openJobDetail(jobId) {
       "</form>";
   } else if (job.status === "open" && getRole() === "freelancer") {
     // v122: unverified freelancer — the ad stays visible, the form does not.
-    html += '<div class="card" id="apply-locked"><span class="muted">برای ارسال درخواست، اول هویتت رو تایید کن (شماره تلفن + ویدیوی معرفی).</span></div>' +
+    html += '<div class="card" id="apply-locked"><span class="muted">برای ارسال درخواست، اول هویتت رو تایید کن (شماره تلفن + عکس تمام‌رخ و نیم‌رخ).</span></div>' +
       '<button class="btn" type="button" id="apply-verify">تایید هویت</button>';
   } else if (job.status === "open") {
     // v92: the ad is open but the viewer is not a freelancer (e.g. an
@@ -4152,12 +4169,15 @@ async function sendChatMessage() {
 }
 
 /* ================= welcome & profile (v18) ================= */
-/* ================= v122: freelancer verification screen =================
-   Step 1 phone (bot contact-share), step 2 intro video (full face to
-   camera, then slow turn to left/right profile). The phone and the video
-   both arrive in the BOT chat, never in the app; this screen only shows
-   the state and polls the verification row every 10s while open, so a
-   share or an approval lands without a manual refresh. */
+/* ================= v124: freelancer verification screen =================
+   Step 1 phone (bot contact-share), step 2 live-camera photos (full
+   face, then profile) taken inside the app — the white oval turns green
+   when the face sits exactly inside it. The photos are INSERTed into
+   verification_photos; the bot promotes the row to pending and the
+   review worker decides. The screen polls the verification row every
+   10s while open, so a share or an approval lands without a manual
+   refresh. Sending a video in the bot chat stays as the fallback when
+   the camera cannot open. */
 function openVerify() {
   state.view = { name: "verify" };
   // Load the row first so a verified user never sees the "not done"
@@ -4186,14 +4206,23 @@ function renderVerify() {
   if (!phoneDone) {
     html += '<button class="btn" type="button" id="verify-open-bot">باز کردن چت ربات</button>';
   }
-  let videoBody = "";
-  if (vs === "approved") videoBody = "ویدیوی معرفیت تایید شد ✓";
-  else if (vs === "pending") videoBody = "ویدیو دریافت شد — در حال بررسیه، نتیجه رو همین‌جا می‌بینی.";
-  else if (vs === "rejected") videoBody = "ویدیوت تایید نشد" + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره بفرست.";
-  else videoBody = "یه ویدیوی ۱۰–۱۵ ثانیه‌ای بگیر: اول رو به دوربین، اسمت رو بگو، بعد سرت رو آروم به چپ و راست بچرخون (نیم‌رخ).";
-  html += verifyStepHtml(2, "ویدیوی معرفی", videoBody, videoDone);
+  let camBody = "";
+  if (vs === "approved") camBody = "احراز هویتت تایید شد ✓";
+  else if (vs === "pending") camBody = "عکس‌های احراز هویت دریافت شد — در حال بررسیه، نتیجه رو همین‌جا می‌بینی.";
+  else if (vs === "rejected") camBody = "احراز هویتت تایید نشد" + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.";
+  else camBody = "با دوربین گوشی دو تا عکس بگیر: اول تمام‌رخ، بعد نیم‌رخ. صورتت رو دقیق داخل بیضی بذار تا سبز بشه.";
+  html += verifyStepHtml(2, "احراز هویت با دوربین", camBody, videoDone);
+  const cam = state.cam;
   if (phoneDone && vs !== "pending" && vs !== "approved") {
-    html += '<button class="btn" type="button" id="verify-open-bot-video">فرستادن ویدیو توی چت ربات</button>';
+    if (cam && cam.error === "camera") {
+      html += '<p class="desc">دوربین باز نشد — دسترسی به دوربین رو بده و دوباره امتحان کن، یا ویدیو رو توی چت ربات بفرست.</p>' +
+        '<button class="btn" type="button" id="verify-open-camera">تلاش دوباره برای دوربین</button>' +
+        '<button class="btn" type="button" id="verify-open-bot-video">فرستادن ویدیو توی چت ربات</button>';
+    } else if (cam && cam.step) {
+      html += camHtml(cam);
+    } else {
+      html += '<button class="btn" type="button" id="verify-open-camera">باز کردن دوربین</button>';
+    }
   }
   if (isVerified(v)) {
     html += '<div class="card"><span class="muted">هویتت تایید شد ✓ — حالا می‌تونی برای آگهی‌ها درخواست بفرستی.</span></div>';
@@ -4205,6 +4234,17 @@ function renderVerify() {
     if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) Telegram.WebApp.openTelegramLink("https://t.me/YThiringai");
     else window.open("https://t.me/YThiringai", "_blank");
   });
+  const camBtn = document.getElementById("verify-open-camera");
+  if (camBtn) camBtn.addEventListener("click", startCamera);
+  const capBtn = document.getElementById("cam-capture");
+  if (capBtn) capBtn.addEventListener("click", capturePhoto);
+  const sendBtn = document.getElementById("verify-send-photos");
+  if (sendBtn) sendBtn.addEventListener("click", sendVerificationPhotos);
+  const retakeBtn = document.getElementById("verify-retake");
+  if (retakeBtn) retakeBtn.addEventListener("click", function () { stopCamera(); startCamera(); });
+  // A re-render recreates the <video> element — re-attach a live stream.
+  if (cam && cam.stream && cam.step && cam.step !== "done") attachCameraVideo();
+  if (cam && cam.step && cam.step !== "done") updateCamUi();
   ensureVerificationRow();
   startVerifyPolling();
 }
@@ -4212,8 +4252,14 @@ function startVerifyPolling() {
   if (state.verifyTimer) return;
   state.verifyTimer = setInterval(function () {
     if (state.view.name !== "verify") { stopVerifyPolling(); return; }
+    // v124: a locally-pending submission stays pending until the
+    // server actually decides — the bot promotes the row within ~10s,
+    // and a poll tick landing before that must not flash the camera
+    // flow back over the "sent" state.
+    const pendingRow = (state.verification && state.verification.video_status === "pending") ? state.verification : null;
     loadVerification().then(function (v) {
       if (state.view.name !== "verify") return;
+      if (pendingRow && v && v.video_status === "none") { state.verification = pendingRow; v = pendingRow; }
       if (verifySig(v) !== state.verifySig) renderVerify();
       // v122: approved while a channel deep link is waiting — land on the ad.
       if (isVerified(v)) {
@@ -4226,6 +4272,181 @@ function startVerifyPolling() {
 }
 function stopVerifyPolling() {
   if (state.verifyTimer) { clearInterval(state.verifyTimer); state.verifyTimer = null; }
+}
+
+/* v124: live-camera verification. Front photo first, then profile;
+   the white oval turns green only when the face sits exactly inside
+   it (FaceDetector when the phone has it; without it the user aligns
+   by eye and the capture button stays enabled). Photos are downscaled
+   to <=1024px JPEG before sending. */
+function camHtml(cam) {
+  if (cam.step === "done") {
+    return '<div class="cam-shots">' +
+      '<div><img src="' + cam.front + '" alt=""><div class="cam-shot-label">تمام‌رخ</div></div>' +
+      '<div><img src="' + cam.profile + '" alt=""><div class="cam-shot-label">نیم‌رخ</div></div></div>' +
+      '<button class="btn" type="button" id="verify-send-photos">ارسال احراز هویت</button>' +
+      '<button class="btn" type="button" id="verify-retake">دوباره گرفتن عکس‌ها</button>';
+  }
+  let h = '<div class="cam-frame"><video id="cam-video" autoplay playsinline muted></video><div class="cam-oval" id="cam-oval"></div></div>' +
+    '<p class="cam-hint" id="cam-hint"></p>' +
+    '<button class="btn" type="button" id="cam-capture">ثبت تمام‌رخ</button>';
+  if (cam.front) {
+    h += '<div class="cam-shots"><div><img src="' + cam.front + '" alt=""><div class="cam-shot-label">تمام‌رخ ✓</div></div></div>';
+  }
+  return h;
+}
+function startCamera() {
+  state.cam = { step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, autoDetect: false, error: null };
+  renderVerify();
+  startCameraStream();
+}
+function startCameraStream() {
+  const cam = state.cam;
+  if (!cam || !cam.step || cam.step === "done") return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    cam.error = "camera";
+    renderVerify();
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }).then(function (stream) {
+    if (!state.cam || state.cam !== cam || state.view.name !== "verify") {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      return;
+    }
+    cam.stream = stream;
+    attachCameraVideo();
+    setupFaceDetection();
+  }).catch(function () {
+    if (state.cam && state.cam === cam) { cam.error = "camera"; renderVerify(); }
+  });
+}
+function attachCameraVideo() {
+  const cam = state.cam;
+  if (!cam || !cam.stream) return;
+  const v = document.getElementById("cam-video");
+  if (v) {
+    v.srcObject = cam.stream;
+    v.play().catch(function () {});
+  }
+}
+function setupFaceDetection() {
+  const cam = state.cam;
+  if (!cam) return;
+  if (typeof window.FaceDetector === "function") {
+    try { cam.detector = new FaceDetector({ fastMode: true }); cam.autoDetect = true; } catch (e) { cam.detector = null; }
+  }
+  if (cam.detector) {
+    cam.timer = setInterval(detectFaceTick, 350);
+    updateCamUi();
+  } else {
+    cam.autoDetect = false;
+    updateCamUi();
+  }
+}
+function detectFaceTick() {
+  const cam = state.cam;
+  if (!cam || !cam.detector || cam.detecting) return;
+  const v = document.getElementById("cam-video");
+  if (!v || !v.videoWidth) return;
+  cam.detecting = true;
+  cam.detector.detect(v).then(function (faces) {
+    cam.detecting = false;
+    if (!state.cam || state.cam !== cam) return;
+    cam.aligned = !!(faces && faces.length === 1 && faceFitsOval(faces[0].boundingBox, v));
+    updateCamUi();
+  }).catch(function () { cam.detecting = false; });
+}
+function faceFitsOval(box, videoEl) {
+  // The detector box is in video pixels; the video displays with
+  // object-fit: cover, so map it to displayed CSS pixels first, then
+  // compare with the oval rect.
+  const el = videoEl.getBoundingClientRect();
+  const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+  if (!vw || !vh || !el.width || !el.height) return false;
+  const scale = Math.max(el.width / vw, el.height / vh);
+  const ox = (el.width - vw * scale) / 2, oy = (el.height - vh * scale) / 2;
+  const fx = ox + box.x * scale, fy = oy + box.y * scale;
+  const fw = box.width * scale, fh = box.height * scale;
+  const oval = document.querySelector(".cam-oval");
+  if (!oval) return false;
+  const or = oval.getBoundingClientRect();
+  // Both rects are viewport-relative — bring the oval centre into the
+  // video element's own coordinates, like the face box above.
+  const cx = fx + fw / 2, cy = fy + fh / 2;
+  const ocx = or.left - el.left + or.width / 2, ocy = or.top - el.top + or.height / 2;
+  const centerOk = Math.abs(cx - ocx) <= or.width * 0.15 && Math.abs(cy - ocy) <= or.height * 0.15;
+  const sizeOk = fw >= or.width * 0.45 && fw <= or.width * 1.05 && fh >= or.height * 0.45 && fh <= or.height * 1.05;
+  return centerOk && sizeOk;
+}
+function camHintText() {
+  const cam = state.cam;
+  if (!cam) return "";
+  if (cam.step === "done") return "هر دو عکس ثبت شد — بفرست برای بررسی.";
+  const stepTxt = cam.step === "front" ? "تمام‌رخ: رو به دوربین" : "نیم‌رخ: سرت رو آروم به چپ بچرخون";
+  if (!cam.autoDetect) return stepTxt + " — صورتت رو داخل بیضی بذار و دکمه ثبت رو بزن.";
+  return stepTxt + (cam.aligned ? " ✓ سبز شد — ثبت کن." : " — صورتت رو دقیق داخل بیضی بذار تا سبز بشه.");
+}
+function updateCamUi() {
+  const cam = state.cam;
+  if (!cam) return;
+  const oval = document.querySelector(".cam-oval");
+  if (oval) oval.classList.toggle("ok", !!cam.aligned);
+  const cap = document.getElementById("cam-capture");
+  if (cap) {
+    cap.disabled = cam.autoDetect && !cam.aligned;
+    cap.textContent = cam.step === "front" ? "ثبت تمام‌رخ" : "ثبت نیم‌رخ";
+  }
+  const hint = document.getElementById("cam-hint");
+  if (hint) hint.textContent = camHintText();
+}
+function capturePhoto() {
+  const cam = state.cam;
+  if (!cam || !cam.step || cam.step === "done") return;
+  const v = document.getElementById("cam-video");
+  if (!v || !v.videoWidth) return;
+  const maxW = 1024;
+  const scale = Math.min(1, maxW / v.videoWidth);
+  const c = document.createElement("canvas");
+  c.width = Math.round(v.videoWidth * scale);
+  c.height = Math.round(v.videoHeight * scale);
+  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  const url = c.toDataURL("image/jpeg", 0.82);
+  if (cam.step === "front") { cam.front = url; cam.step = "profile"; }
+  else if (cam.step === "profile") { cam.profile = url; cam.step = "done"; stopCameraStream(); }
+  cam.aligned = false;
+  renderVerify();
+}
+function stopCameraStream() {
+  const cam = state.cam;
+  if (!cam) return;
+  if (cam.timer) { clearInterval(cam.timer); cam.timer = null; }
+  if (cam.stream) { cam.stream.getTracks().forEach(function (t) { t.stop(); }); cam.stream = null; }
+  cam.detector = null;
+}
+function stopCamera() {
+  stopCameraStream();
+  state.cam = null;
+}
+async function sendVerificationPhotos() {
+  const cam = state.cam;
+  if (!cam || !cam.front || !cam.profile) return;
+  const btn = document.getElementById("verify-send-photos");
+  if (btn) btn.disabled = true;
+  try {
+    if (MOCK) {
+      MOCK_VERIFICATION_PHOTOS.push({ telegram_id: me().id, front_photo: cam.front, profile_photo: cam.profile, status: "pending", submitted_at: new Date().toISOString() });
+    } else {
+      await sbInsert("verification_photos", { telegram_id: me().id, front_photo: cam.front, profile_photo: cam.profile, status: "pending" });
+    }
+    // The bot promotes the verification row to pending within ~10s;
+    // show the pending state now — the 10s poll confirms it.
+    state.verification = Object.assign({}, state.verification, { video_status: "pending" });
+    stopCamera();
+    renderVerify();
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    showToast("ارسال نشد، دوباره امتحان کن");
+  }
 }
 function renderWelcome() {
   const u = me();
@@ -4316,7 +4537,7 @@ function renderProfile() {
     '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
     "</form>" +
     '<div class="card"><div class="card-head"><div class="card-title">تایید هویت</div></div>' +
-    '<p class="desc" id="profile-verify-desc">برای ارسال درخواست، هویتت باید تایید شده باشه (شماره تلفن + ویدیوی معرفی).</p>' +
+    '<p class="desc" id="profile-verify-desc">برای ارسال درخواست، هویتت باید تایید شده باشه (شماره تلفن + عکس تمام‌رخ و نیم‌رخ با دوربین).</p>' +
     '<button class="btn" type="button" id="profile-verify">تایید هویت</button></div>';
   document.getElementById("profile-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -4590,6 +4811,7 @@ function render() {
   stopChatPolling();
   stopChatRealtime();
   stopVerifyPolling(); // v122: the verify screen restarts its own poll when it renders
+  stopCamera(); // v124: leaving the verify screen closes the camera
   // The welcome and onboarding screens have no tab bar (choose first);
   // neither does the chat page (it has its own back button + fixed
   // composer).
@@ -4705,7 +4927,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v123 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v124 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -4775,7 +4997,7 @@ async function switchTab(tab) {
 })();
 
 /* Debug hook for automated checks (harmless in production). */
-window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, getFreelancerName: getFreelancerName, saveFreelancerName: saveFreelancerName, displayFreelancerName: displayFreelancerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, requestPhotoUpdate: requestPhotoUpdate, refreshPhotos: refreshPhotos, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply, submitPostJob: submitPostJob, loadEmployerYoutube: loadEmployerYoutube, ensureEmployerYoutube: ensureEmployerYoutube, mockConnectYoutube: mockConnectYoutube, mockClearYoutube: mockClearYoutube, getVerification: ensureVerification, setVerificationMock: mockSetVerification, openVerify: openVerify, isVerified: isVerified, buildYoutubeAuthUrl: buildYoutubeAuthUrl, openYtConnect: openYtConnect, renderYtConnect: renderYtConnect };
+window.__app = { state: state, switchTab: switchTab, MOCK: MOCK, emptyState: emptyState, mountDucks: mountDucks, setRole: setRole, getRole: getRole, syncRoleFromCloud: syncRoleFromCloud, seedFromCache: seedFromCache, seedChatFromCache: seedChatFromCache, seedAppFromCache: seedAppFromCache, seedTailFromLatest: seedTailFromLatest, showWelcome: showWelcome, getLaunchSource: getLaunchSource, deepJobId: deepJobId, getProfile: getProfile, getEmployerPhoto: getEmployerPhoto, saveEmployerPhoto: saveEmployerPhoto, getEmployerName: getEmployerName, saveEmployerName: saveEmployerName, displayEmployerName: displayEmployerName, getFreelancerName: getFreelancerName, saveFreelancerName: saveFreelancerName, displayFreelancerName: displayFreelancerName, handleEmployerPhotoFile: handleEmployerPhotoFile, homeTab: homeTab, handleBannerFile: handleBannerFile, handleProfilePhotoFile: handleProfilePhotoFile, openJobApplications: openJobApplications, openJobDetail: openJobDetail, openChat: openChat, openFreelancerProfile: openFreelancerProfile, refreshUnread: refreshUnread, refreshMyApps: refreshMyApps, requestPhotoUpdate: requestPhotoUpdate, refreshPhotos: refreshPhotos, markRead: markRead, loadChatMessages: loadChatMessages, mergeChatRows: mergeChatRows, startReply: startReply, cancelReply: cancelReply, showMsgMenu: showMsgMenu, hideMsgMenu: hideMsgMenu, rtOnInsert: rtOnInsert, listRtOnInsert: listRtOnInsert, startListRealtime: startListRealtime, stopListRealtime: stopListRealtime, isAppHidden: isAppHidden, hideApp: hideApp, unhideApp: unhideApp, openDeleteConfirm: openDeleteConfirm, openHandshakeConfirm: openHandshakeConfirm, confirmHandshake: confirmHandshake, submitApply: submitApply, submitPostJob: submitPostJob, loadEmployerYoutube: loadEmployerYoutube, ensureEmployerYoutube: ensureEmployerYoutube, mockConnectYoutube: mockConnectYoutube, mockClearYoutube: mockClearYoutube, getVerification: ensureVerification, setVerificationMock: mockSetVerification, MOCK_VERIFICATION_PHOTOS: MOCK_VERIFICATION_PHOTOS, openVerify: openVerify, isVerified: isVerified, buildYoutubeAuthUrl: buildYoutubeAuthUrl, openYtConnect: openYtConnect, renderYtConnect: renderYtConnect };
 </script>
 </body>
 <!-- v68 rebuild: retrigger Pages build (GitHub App missed f762cb5) -->
