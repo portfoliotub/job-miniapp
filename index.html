@@ -550,7 +550,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v124</span>
+<span class="app-version" id="app-version">v125</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4198,22 +4198,32 @@ function renderVerify() {
   const phoneDone = !!(v && v.phone_verified);
   const vs = v ? v.video_status : "none";
   const videoDone = vs === "approved";
-  let html = '<button class="back" data-back>› بازگشت</button><h2>تایید هویت</h2>' +
-    '<p class="desc">برای اینکه کارفرماها بهت اعتماد کنن و بتونی درخواست بفرستی، دو مرحله رو کامل کن. شماره تلفنت رو هیچ‌کس نمی‌بینه — فقط «تایید شده ✓» نشون داده می‌شه.</p>';
-  html += verifyStepHtml(1, "شماره تلفن", phoneDone
-    ? "شماره تلفنت تایید شد ✓"
-    : "توی چت ربات، دکمه «📱 اشتراک شماره تلفن» رو بزن. تلگرام خودش شماره رو تایید می‌کنه.", phoneDone);
-  if (!phoneDone) {
-    html += '<button class="btn" type="button" id="verify-open-bot">باز کردن چت ربات</button>';
+  // v125 (user order 2026-11-17): when the camera is the next step, the
+  // two step cards sit above it and push it below the fold — the user
+  // has to scroll to reach the camera. So in the camera state the
+  // screen goes straight to the camera: no intro, no step cards.
+  const camActionable = phoneDone && vs !== "pending" && vs !== "approved";
+  let html = '<button class="back" data-back>› بازگشت</button><h2>تایید هویت</h2>';
+  if (!camActionable) {
+    html += '<p class="desc">برای اینکه کارفرماها بهت اعتماد کنن و بتونی درخواست بفرستی، دو مرحله رو کامل کن. شماره تلفنت رو هیچ‌کس نمی‌بینه — فقط «تایید شده ✓» نشون داده می‌شه.</p>';
+    html += verifyStepHtml(1, "شماره تلفن", phoneDone
+      ? "شماره تلفنت تایید شد ✓"
+      : "توی چت ربات، دکمه «📱 اشتراک شماره تلفن» رو بزن. تلگرام خودش شماره رو تایید می‌کنه.", phoneDone);
+    if (!phoneDone) {
+      html += '<button class="btn" type="button" id="verify-open-bot">باز کردن چت ربات</button>';
+    }
+    let camBody = "";
+    if (vs === "approved") camBody = "احراز هویتت تایید شد ✓";
+    else if (vs === "pending") camBody = "عکس‌های احراز هویت دریافت شد — در حال بررسیه، نتیجه رو همین‌جا می‌بینی.";
+    else if (vs === "rejected") camBody = "احراز هویتت تایید نشد" + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.";
+    else camBody = "با دوربین گوشی دو تا عکس بگیر: اول تمام‌رخ، بعد نیم‌رخ. صورتت رو دقیق داخل بیضی بذار تا سبز بشه.";
+    html += verifyStepHtml(2, "احراز هویت با دوربین", camBody, videoDone);
+  } else if (vs === "rejected") {
+    // A retake still needs the reason on screen — one line, not a card.
+    html += '<p class="desc">احراز هویتت تایید نشد' + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.</p>";
   }
-  let camBody = "";
-  if (vs === "approved") camBody = "احراز هویتت تایید شد ✓";
-  else if (vs === "pending") camBody = "عکس‌های احراز هویت دریافت شد — در حال بررسیه، نتیجه رو همین‌جا می‌بینی.";
-  else if (vs === "rejected") camBody = "احراز هویتت تایید نشد" + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.";
-  else camBody = "با دوربین گوشی دو تا عکس بگیر: اول تمام‌رخ، بعد نیم‌رخ. صورتت رو دقیق داخل بیضی بذار تا سبز بشه.";
-  html += verifyStepHtml(2, "احراز هویت با دوربین", camBody, videoDone);
   const cam = state.cam;
-  if (phoneDone && vs !== "pending" && vs !== "approved") {
+  if (camActionable) {
     if (cam && cam.error === "camera") {
       html += '<p class="desc">دوربین باز نشد — دسترسی به دوربین رو بده و دوباره امتحان کن، یا ویدیو رو توی چت ربات بفرست.</p>' +
         '<button class="btn" type="button" id="verify-open-camera">تلاش دوباره برای دوربین</button>' +
@@ -4927,7 +4937,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v124 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v125 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
