@@ -234,7 +234,7 @@
      white oval is the face guide; it turns green only when the face
      sits exactly inside it (FaceDetector when the phone has it). */
   .cam-frame { position: relative; width: 100%; aspect-ratio: 3 / 4; background: #000; border-radius: 12px; overflow: hidden; margin-top: 10px; }
-  .cam-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cam-frame video { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); /* v127: mirror the selfie preview like the native camera app — without this the preview moves opposite to the user. The captured photo stays unmirrored: canvas drawImage ignores the element's CSS transform. */ }
   .cam-oval { position: absolute; left: 50%; top: 50%; width: 62%; aspect-ratio: 3 / 4; transform: translate(-50%, -50%); border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0,0,0,0.45); pointer-events: none; }
   .cam-oval.ok { border-color: #22c55e; box-shadow: 0 0 0 9999px rgba(0,0,0,0.45), 0 0 18px rgba(34,197,94,0.9); }
   .cam-hint { text-align: center; font-size: 14px; margin: 10px 0 0; }
@@ -550,7 +550,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v126</span>
+<span class="app-version" id="app-version">v127</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4937,7 +4937,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v126 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v127 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
