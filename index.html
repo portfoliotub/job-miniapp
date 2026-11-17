@@ -571,7 +571,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v130</span>
+<span class="app-version" id="app-version">v131</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1923,9 +1923,19 @@ async function openJobDetail(jobId) {
   const mine = job.employer_id === me().id;
   const alreadyApplied = state.myApplications.some(function (a) { return a.job_id === jobId; });
   // v122: the apply form needs a verified identity (phone + approved
-  // intro video). Checked here so the detail can show a locked card
-  // instead of the form; submitApply re-checks (defense in depth).
+  // photos). submitApply re-checks (defense in depth).
   const _verified = getRole() === "freelancer" ? isVerified(await ensureVerification()) : false;
+  // v131 (user order 2026-11-17): an unverified freelancer who taps
+  // «ارسال درخواست» in the channel must NOT see the ad at all — the
+  // verification form opens instead. The deep link survives in the
+  // URL, so the ad reopens after approval (the verify poll lands on
+  // it, v122). Employers and verified freelancers are unaffected; the
+  // locked card below stays only as a safety net for any path that
+  // renders the detail while unverified.
+  if (getRole() === "freelancer" && !_verified) {
+    openVerify();
+    return;
+  }
   let html = '<button class="back" data-back>› بازگشت</button>' +
     '<div class="card"><div class="card-head">' + photoAvatarHtml(job.employer_name || "کارفرما", job.employer_photo || "") +
     '<div><div class="card-title">' + esc(job.title) + '</div><div class="meta">' + esc(job.employer_name || "کارفرما") + " · " + fmtDate(job.created_at) + "</div></div></div>" +
@@ -5007,7 +5017,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v130 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v131 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
