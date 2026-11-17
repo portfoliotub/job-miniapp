@@ -241,6 +241,22 @@
   .cam-shots { display: flex; gap: 8px; margin-top: 10px; }
   .cam-shots img { width: 72px; height: 96px; object-fit: cover; border-radius: 8px; border: 2px solid #22c55e; }
   .cam-shots .cam-shot-label { font-size: 12px; color: var(--hint); text-align: center; margin-top: 2px; }
+  /* v129 (user order 2026-11-17): professional verify screen — a hero
+     with a shield icon plus a "why verification is mandatory" block.
+     The why block is deliberately NOT a .card and has no .step-num:
+     the v125 check asserts the camera state has neither, so the
+     camera button stays the first action on screen. */
+  .verify-hero { text-align: center; padding: 14px 12px 0; }
+  .verify-hero .shield { width: 64px; height: 64px; margin: 0 auto 10px; border-radius: 50%; background: #e6f4ea; display: flex; align-items: center; justify-content: center; }
+  .verify-hero h2 { margin: 0; font-size: 20px; padding: 0; }
+  .verify-hero p { margin: 6px 0 0; font-size: 14px; color: var(--hint); }
+  .verify-why { margin: 16px 12px 0; padding: 14px; border: 1px solid var(--separator); border-radius: 12px; background: var(--secondary-bg); }
+  .verify-why h3 { margin: 0 0 4px; font-size: 15px; }
+  .verify-why-item { display: flex; gap: 10px; margin-top: 10px; }
+  .verify-why-check { flex: none; width: 22px; height: 22px; border-radius: 50%; background: #1faa59; color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .verify-why-item b { display: block; font-size: 14px; }
+  .verify-why-item span { display: block; font-size: 13px; color: var(--hint); margin-top: 2px; }
+  .verify-note { margin: 12px 16px 0; font-size: 12.5px; color: var(--hint); text-align: center; }
   .meta { font-size: 13px; color: var(--hint); }
   .desc { font-size: 14px; margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; }
   .badge {
@@ -550,7 +566,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v128</span>
+<span class="app-version" id="app-version">v129</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4192,6 +4208,23 @@ function verifyStepHtml(num, title, body, done) {
 function verifySig(v) {
   return v ? ((v.phone_verified ? "1" : "0") + "|" + v.video_status + "|" + (v.review_note || "")) : "null";
 }
+/* v129 (user order 2026-11-17): professional verify screen — a hero
+   with a shield icon, and a "why verification is mandatory" block:
+   fake accounts out, employer trust, safety of the freelancer and
+   their money. Shown whenever the identity is still open (not
+   pending, not approved) — in the phone state and in the camera
+   state, but never while the camera is open, so taking photos stays
+   full-screen. */
+function verifyHeroHtml() {
+  return '<div class="verify-hero"><div class="shield"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M12 2l8 3v6c0 5-3.5 9.3-8 11-4.5-1.7-8-6-8-11V5l8-3z" fill="#1faa59"/><path d="M8.5 12l2.5 2.5 4.5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h2>تایید هویت</h2><p>برای امنیت همه — کارفرما و فریلنسر</p></div>';
+}
+function verifyWhyHtml() {
+  return '<div class="verify-why"><h3>چرا احراز هویت الزامیه؟</h3>' +
+    '<div class="verify-why-item"><span class="verify-why-check">✓</span><div><b>حساب‌های جعلی حذف می‌شن</b><span>فقط آدم‌های واقعی می‌تونن درخواست بدن؛ ربات و کلاهبردار جایی ندارن.</span></div></div>' +
+    '<div class="verify-why-item"><span class="verify-why-check">✓</span><div><b>کارفرماها بهت اعتماد می‌کنن</b><span>آگهی‌دهنده فقط با فریلنسر تاییدشده کار می‌کنه — تاییدشدن یعنی پروژه‌ی بیشتر.</span></div></div>' +
+    '<div class="verify-why-item"><span class="verify-why-check">✓</span><div><b>امنیت خودت و پولت</b><span>هویت طرف مقابل هم مشخصه و اختلاف و کلاهبرداری کمتر پیش میاد.</span></div></div></div>' +
+    '<p class="verify-note">یک بار تایید بشی، برای همیشه تاییدشده‌ای. عکس‌ها فقط برای بررسی هویت استفاده می‌شن و با هیچ‌کس به اشتراک گذاشته نمی‌شن.</p>';
+}
 function renderVerify() {
   const v = state.verification;
   state.verifySig = verifySig(v);
@@ -4203,8 +4236,13 @@ function renderVerify() {
   // has to scroll to reach the camera. So in the camera state the
   // screen goes straight to the camera: no intro, no step cards.
   const camActionable = phoneDone && vs !== "pending" && vs !== "approved";
-  let html = '<button class="back" data-back>› بازگشت</button><h2>تایید هویت</h2>';
+  // v129: the why block shows while the identity is still open (not
+  // pending, not approved) — in the phone state and in the camera
+  // state, but never while the camera is open.
+  const showWhy = vs !== "pending" && vs !== "approved";
+  let html = '<button class="back" data-back>› بازگشت</button>' + verifyHeroHtml();
   if (!camActionable) {
+    if (showWhy) html += verifyWhyHtml();
     html += '<p class="desc">برای اینکه کارفرماها بهت اعتماد کنن و بتونی درخواست بفرستی، دو مرحله رو کامل کن. شماره تلفنت رو هیچ‌کس نمی‌بینه — فقط «تایید شده ✓» نشون داده می‌شه.</p>';
     html += verifyStepHtml(1, "شماره تلفن", phoneDone
       ? "شماره تلفنت تایید شد ✓"
@@ -4222,6 +4260,9 @@ function renderVerify() {
     // A retake still needs the reason on screen — one line, not a card.
     html += '<p class="desc">احراز هویتت تایید نشد' + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.</p>";
   }
+  // v129: the why block in the camera state — only while the camera
+  // is not open, so the camera frame and capture stay full-screen.
+  if (camActionable && showWhy && !(state.cam && state.cam.step)) html += verifyWhyHtml();
   const cam = state.cam;
   if (camActionable) {
     if (cam && cam.error === "camera") {
@@ -4961,7 +5002,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v128 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v129 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
