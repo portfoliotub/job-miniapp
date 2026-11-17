@@ -550,7 +550,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v127</span>
+<span class="app-version" id="app-version">v128</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4214,7 +4214,7 @@ function renderVerify() {
     }
     let camBody = "";
     if (vs === "approved") camBody = "احراز هویتت تایید شد ✓";
-    else if (vs === "pending") camBody = "عکس‌های احراز هویت دریافت شد — در حال بررسیه، نتیجه رو همین‌جا می‌بینی.";
+    else if (vs === "pending") camBody = "عکس‌های احراز هویت دریافت شد ✓ — نتیجه بررسی احراز هویت شما ظرف ۲۴ ساعت آینده اعلام می‌شود.";
     else if (vs === "rejected") camBody = "احراز هویتت تایید نشد" + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.";
     else camBody = "با دوربین گوشی دو تا عکس بگیر: اول تمام‌رخ، بعد نیم‌رخ. صورتت رو دقیق داخل بیضی بذار تا سبز بشه.";
     html += verifyStepHtml(2, "احراز هویت با دوربین", camBody, videoDone);
@@ -4238,7 +4238,13 @@ function renderVerify() {
     html += '<div class="card"><span class="muted">هویتت تایید شد ✓ — حالا می‌تونی برای آگهی‌ها درخواست بفرستی.</span></div>';
   }
   viewEl().innerHTML = html;
-  bindBack(homeTab());
+  // v128 (user order 2026-11-17): the law — until the identity is
+  // approved, the next step stays closed. Back from the verify screen
+  // goes to the role pick (welcome), never home; the switchTab guard
+  // funnels every other path back to verify too. The Telegram
+  // BackButton clicks the same [data-back] button, so it follows.
+  if (isVerified(v)) bindBack(homeTab());
+  else { const _vb = viewEl().querySelector("[data-back]"); if (_vb) _vb.addEventListener("click", function () { showWelcome(); }); }
   const botBtn = document.getElementById("verify-open-bot") || document.getElementById("verify-open-bot-video");
   if (botBtn) botBtn.addEventListener("click", function () {
     if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) Telegram.WebApp.openTelegramLink("https://t.me/YThiringai");
@@ -4858,6 +4864,24 @@ async function switchTab(tab) {
   if (["post", "my-apps", "my-jobs", "profile"].indexOf(tab) === -1) tab = homeTab();
   const role = getRole();
   if ((tab === "post" || tab === "my-jobs") && role === "freelancer" && !isAdmin()) tab = "my-apps";
+  // v128 (user order 2026-11-17): the law — an unverified freelancer
+  // never leaves the verify screen. Home, applications and profile
+  // stay closed until the identity is approved. Every navigation path
+  // (tabs, back buttons, boot, deep links, the verify poll) funnels
+  // through switchTab, so the check lives here; the verify screen
+  // itself and the onboarding/welcome screens never call switchTab to
+  // get in. Fail closed: a failed verification load counts as "not
+  // verified" (loadVerification already nulls it on error).
+  if (role === "freelancer") {
+    // Use the cached row when loaded so the first paint stays
+    // synchronous (v81 reads the DOM right after switchTab); only the
+    // first call in a session awaits the load.
+    let _v = state.verification;
+    if (_v === undefined) {
+      try { _v = await ensureVerification(); } catch (e) { _v = null; }
+    }
+    if (!isVerified(_v)) { if (state.view.name !== "verify") openVerify(); return; }
+  }
   // v103: the profile tab is open to both roles now (was freelancer-only) — the employer profile lives there too.
   state.editingJobId = null; // v62: any tab switch cancels an edit
   state.empNameEditing = false; // v108: any tab switch cancels a name edit
@@ -4937,7 +4961,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v127 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v128 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
