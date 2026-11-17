@@ -571,7 +571,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v131</span>
+<span class="app-version" id="app-version">v132</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1901,7 +1901,17 @@ function budgetNum(job) {
   const m = String(job.budget || "").match(/[\d,]+/);
   return m ? parseFloat(m[0].replace(/,/g, "")) : 0;
 }
-async function openJobDetail(jobId) {
+/* v132 (user order 2026-11-17): an employer who taps «ارسال درخواست»
+   on a channel post gets a warning page, never the ad — employers
+   cannot apply, to any ad including their own. */
+function renderApplyWarning() {
+  viewEl().innerHTML = '<button class="back" data-back>› بازگشت</button>' +
+    '<div class="verify-hero"><div class="shield" style="background:#fff3e0"><span style="font-size:36px;line-height:1">⚠️</span></div>' +
+    '<h2>کارفرما نمی‌تواند درخواست ارسال کند</h2>' +
+    '<p>ارسال درخواست فقط برای فریلنسرهاست. شما با نقش کارفرما وارد شده‌اید.</p></div>';
+  bindBack(homeTab());
+}
+async function openJobDetail(jobId, fromApply) {
   const job = await findJob(jobId);
   state.view = { name: "job-detail", jobId: jobId };
   if (!job) {
@@ -1918,6 +1928,17 @@ async function openJobDetail(jobId) {
   if (getOnboardVersion() !== ONBOARD_VERSION || !getRole()) {
     state.view = { name: getOnboardVersion() !== ONBOARD_VERSION ? "onboarding" : "welcome" };
     render();
+    return;
+  }
+  // v132 (user order 2026-11-17): an employer tapping «ارسال درخواست»
+  // on a channel post gets the warning page, never the ad — employers
+  // cannot apply, to any ad including their own (K's test: employer
+  // role opened his own ad's post and saw the full ad). Only the
+  // deep-link apply path reaches here with fromApply; opening an own
+  // ad from my-jobs passes nothing and renders normally.
+  if (fromApply && getRole() === "employer") {
+    state.view = { name: "apply-warning", jobId: jobId };
+    renderApplyWarning();
     return;
   }
   const mine = job.employer_id === me().id;
@@ -4255,7 +4276,12 @@ function renderVerify() {
   // pending, not approved) — in the phone state and in the camera
   // state, but never while the camera is open.
   const showWhy = vs !== "pending" && vs !== "approved";
-  let html = '<button class="back" data-back>› بازگشت</button>' + verifyHeroHtml();
+  // v132 (user order 2026-11-17): the strict law — an unverified
+  // freelancer sees NOTHING but the verification form: no back
+  // button (it led to the role cards, an escape around the gate),
+  // no tab bar (render() already hides it on the verify view).
+  const _locked = getRole() === "freelancer" && !isVerified(v);
+  let html = (_locked ? "" : '<button class="back" data-back>› بازگشت</button>') + verifyHeroHtml();
   if (!camActionable) {
     if (showWhy) html += verifyWhyHtml();
     html += '<p class="desc">برای اینکه کارفرماها بهت اعتماد کنن و بتونی درخواست بفرستی، دو مرحله رو کامل کن. شماره تلفنت رو هیچ‌کس نمی‌بینه — فقط «تایید شده ✓» نشون داده می‌شه.</p>';
@@ -4294,11 +4320,12 @@ function renderVerify() {
     html += '<div class="card"><span class="muted">هویتت تایید شد ✓ — حالا می‌تونی برای آگهی‌ها درخواست بفرستی.</span></div>';
   }
   viewEl().innerHTML = html;
-  // v128 (user order 2026-11-17): the law — until the identity is
-  // approved, the next step stays closed. Back from the verify screen
-  // goes to the role pick (welcome), never home; the switchTab guard
-  // funnels every other path back to verify too. The Telegram
-  // BackButton clicks the same [data-back] button, so it follows.
+  // v128: back from the verify screen goes to the role pick
+  // (welcome), never home; the switchTab guard funnels every other
+  // path back to verify too. v132: an unverified freelancer has no
+  // back button at all — the role cards were an escape around the
+  // gate. The Telegram BackButton clicks the same [data-back]
+  // button, so it hides too.
   if (isVerified(v)) bindBack(homeTab());
   else { const _vb = viewEl().querySelector("[data-back]"); if (_vb) _vb.addEventListener("click", function () { showWelcome(); }); }
   const botBtn = document.getElementById("verify-open-bot") || document.getElementById("verify-open-bot-video");
@@ -4337,7 +4364,7 @@ function startVerifyPolling() {
       if (isVerified(v)) {
         const dj = deepJobId();
         stopVerifyPolling();
-        if (dj) openJobDetail(dj); else switchTab(homeTab());
+        if (dj) openJobDetail(dj, true); else switchTab(homeTab());
       }
     }).catch(function () {});
   }, 10000);
@@ -4552,7 +4579,7 @@ function renderWelcome() {
       ensureVerification().then(function (v) {
         if (isVerified(v)) {
           const dj = deepJobId();
-          if (dj) openJobDetail(dj); else switchTab(homeTab());
+          if (dj) openJobDetail(dj, true); else switchTab(homeTab());
         } else openVerify();
       }).catch(function () { openVerify(); });
     });
@@ -4895,6 +4922,7 @@ function render() {
     case "yt-connect": renderYtConnect(); break;
     case "verify": renderVerify(); break;
     case "job-detail": openJobDetail(state.view.jobId); break;
+    case "apply-warning": renderApplyWarning(); break;
     case "post": renderPost(); break;
     case "my-apps": renderMyApplications(); break;
     case "my-jobs": renderMyJobs(); break;
@@ -5017,7 +5045,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v131 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v132 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -5055,7 +5083,7 @@ async function switchTab(tab) {
     // re-checks the channel and advances to the employer home itself.
     else if (getLaunchSource().key === "yt_connected") { openYtConnect(); }
     else if (!getRole()) { state.view = { name: "welcome" }; render(); }
-    else if (dj) { preload.then(function () { openJobDetail(dj); }); }
+    else if (dj) { preload.then(function () { openJobDetail(dj, true); }); }
     else switchTab(homeTab());
   }
   // v81: paint the list + dots instantly from the last session's cache
