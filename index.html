@@ -253,7 +253,7 @@
   .verify-why { margin: 16px 12px 0; padding: 14px; border: 1px solid var(--separator); border-radius: 12px; background: var(--secondary-bg); }
   .verify-why h3 { margin: 0 0 4px; font-size: 15px; }
   .verify-why-item { display: flex; gap: 10px; margin-top: 10px; }
-  .verify-why-check { flex: none; width: 22px; height: 22px; border-radius: 50%; background: #1faa59; color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .verify-why-item span.verify-why-check { flex: none; width: 26px; height: 26px; border-radius: 50%; background: #1faa59; color: #fff; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
   .verify-why-item b { display: block; font-size: 14px; }
   .verify-why-item span { display: block; font-size: 13px; color: var(--hint); margin-top: 2px; }
   .verify-note { margin: 12px 16px 0; font-size: 12.5px; color: var(--hint); text-align: center; }
@@ -290,6 +290,11 @@
     border: none; border-radius: 10px; cursor: pointer;
   }
   form .btn { margin-left: 0; margin-right: 0; }
+  /* v130 (user order 2026-11-17): a shrink-to-fit button centred —
+     auto side margins centre it. Used by the verify camera button:
+     the user wants it in the middle, not stuck to the side, and
+     deliberately NOT full-width. Specificity (0,2,0) beats .btn. */
+  .btn.btn-center { margin-left: auto; margin-right: auto; }
   .btn:active { opacity: 0.85; transform: scale(0.98); }
   .btn-ghost {
     background: var(--secondary-bg); color: var(--link);
@@ -566,7 +571,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v129</span>
+<span class="app-version" id="app-version">v130</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4267,12 +4272,12 @@ function renderVerify() {
   if (camActionable) {
     if (cam && cam.error === "camera") {
       html += '<p class="desc">دوربین باز نشد — دسترسی به دوربین رو بده و دوباره امتحان کن، یا ویدیو رو توی چت ربات بفرست.</p>' +
-        '<button class="btn" type="button" id="verify-open-camera">تلاش دوباره برای دوربین</button>' +
+        '<button class="btn btn-center" type="button" id="verify-open-camera">تلاش دوباره برای دوربین</button>' +
         '<button class="btn" type="button" id="verify-open-bot-video">فرستادن ویدیو توی چت ربات</button>';
     } else if (cam && cam.step) {
       html += camHtml(cam);
     } else {
-      html += '<button class="btn" type="button" id="verify-open-camera">باز کردن دوربین</button>';
+      html += '<button class="btn btn-center" type="button" id="verify-open-camera">باز کردن دوربین</button>';
     }
   }
   if (isVerified(v)) {
@@ -5002,7 +5007,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v129 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v130 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
