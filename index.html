@@ -571,7 +571,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v133</span>
+<span class="app-version" id="app-version">v134</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -672,7 +672,20 @@ function isAdmin() { return MOCK || (me() && me().id === ADMIN_ID); }
    The role is therefore ALSO written to Telegram's CloudStorage
    (per-user, per-bot, server-side) and restored from it on boot;
    localStorage stays as the fast local mirror. */
-const ROLE_KEY = "yt_role";
+const ROLE_KEY = "yt_role"; // legacy shared key — v134: never read again
+const ROLE_KEY_PREFIX = "yt_role_";
+/* v134 (user order 2026-11-17): the role is PER Telegram account.
+   localStorage is shared by every Telegram account on one device
+   (v95), so the old single key 'yt_role' made a fresh account inherit
+   the previous account's role — the user tested with an account that
+   never started the bot and got the employer warning, which must fire
+   only when the user CHOSE the employer role. The local key is now
+   yt_role_<telegram_id>, like the profile and the caches. The
+   CloudStorage key stays 'yt_role': Telegram's CloudStorage is
+   already per-user, so it is the migration source — a returning user
+   whose local key is empty restores their OWN role from the cloud,
+   never anyone else's. */
+function roleKey() { return ROLE_KEY_PREFIX + (me() ? me().id : "anon"); }
 /* v95: the freelancer profile is stored PER Telegram account.
    localStorage is shared by every Telegram account on one device, so the
    old single key 'yt_profile' made one account's saved profile
@@ -711,13 +724,13 @@ function cloudSet(key, val) {
   try { if (tg && tg.CloudStorage && tg.CloudStorage.setItem) tg.CloudStorage.setItem(key, val, function () {}); } catch (e) {}
 }
 function getRole() {
-  const r = store.get(ROLE_KEY);
+  const r = store.get(roleKey());
   return (r === "employer" || r === "freelancer") ? r : null;
 }
 function setRole(r) {
   if (r !== "employer" && r !== "freelancer") return;
-  store.set(ROLE_KEY, r);
-  cloudSet(ROLE_KEY, r); // v80: durable copy in Telegram CloudStorage
+  store.set(roleKey(), r);
+  cloudSet(ROLE_KEY, r); // v80: durable copy in Telegram CloudStorage (per-user there)
   buildTabs();
   recordOnboarding(r); // v90: best-effort, never blocks the role pick
 }
@@ -1031,7 +1044,7 @@ function syncRoleFromCloud() {
   cloudGet(ROLE_KEY, function (cr) {
     if ((cr === "employer" || cr === "freelancer") && cr !== getRole()) {
       var wasHome = (state.view.name === homeTab());
-      store.set(ROLE_KEY, cr);
+      store.set(roleKey(), cr);
       if (wasHome) { buildTabs(); switchTab(homeTab()); }
     }
   });
@@ -5097,7 +5110,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v133 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v134 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
@@ -5151,7 +5164,7 @@ async function switchTab(tab) {
     cloudGet(ROLE_KEY, function (cr) {
       if (bootDone) return;
       bootDone = true; clearTimeout(bootTimer);
-      if (cr === "employer" || cr === "freelancer") store.set(ROLE_KEY, cr);
+      if (cr === "employer" || cr === "freelancer") store.set(roleKey(), cr);
       finishBoot();
     });
   } else finishBoot();
