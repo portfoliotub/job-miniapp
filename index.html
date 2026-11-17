@@ -571,7 +571,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v132</span>
+<span class="app-version" id="app-version">v133</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -1945,14 +1945,27 @@ async function openJobDetail(jobId, fromApply) {
   const alreadyApplied = state.myApplications.some(function (a) { return a.job_id === jobId; });
   // v122: the apply form needs a verified identity (phone + approved
   // photos). submitApply re-checks (defense in depth).
-  const _verified = getRole() === "freelancer" ? isVerified(await ensureVerification()) : false;
-  // v131 (user order 2026-11-17): an unverified freelancer who taps
-  // «ارسال درخواست» in the channel must NOT see the ad at all — the
-  // verification form opens instead. The deep link survives in the
-  // URL, so the ad reopens after approval (the verify poll lands on
-  // it, v122). Employers and verified freelancers are unaffected; the
-  // locked card below stays only as a safety net for any path that
-  // renders the detail while unverified.
+  const _v = getRole() === "freelancer" ? await ensureVerification() : null;
+  // v133 (user order 2026-11-17): the channel apply rule — a
+  // freelancer who hasn't started the bot (phone not verified) taps
+  // «ارسال درخواست» and gets a blocking "start the bot" screen
+  // instead of anything else: the phone number is shared in the bot
+  // chat, and nothing proceeds until it is. The screen polls the
+  // verification row and advances to the verify screen the moment
+  // the number is shared; the «استارت ربات» button carries the ad
+  // (?start=job_<id>) so the bot's welcome link opens that ad again.
+  if (getRole() === "freelancer" && !(_v && _v.phone_verified)) {
+    state.view = { name: "start-bot", jobId: jobId };
+    render(); // via the switch: hides the tab bar and starts the poll
+    return;
+  }
+  const _verified = isVerified(_v);
+  // v131: phone done but video not approved → the verify screen.
+  // The deep link survives in the URL, so the ad reopens after
+  // approval (the verify poll lands on it, v122). Employers and
+  // verified freelancers are unaffected; the locked card below stays
+  // only as a safety net for any path that renders the detail while
+  // unverified.
   if (getRole() === "freelancer" && !_verified) {
     openVerify();
     return;
@@ -4373,6 +4386,43 @@ function stopVerifyPolling() {
   if (state.verifyTimer) { clearInterval(state.verifyTimer); state.verifyTimer = null; }
 }
 
+/* v133 (user order 2026-11-17): the channel apply rule — a freelancer
+   who hasn't started the bot (phone not verified) taps «ارسال
+   درخواست» and gets this blocking screen instead of anything else:
+   start the bot and share the number first. No back button, no tab
+   bar — the screen polls the verification row and advances to the
+   verify screen the moment the number is shared. The button carries
+   the ad (?start=job_<id>) so the bot's welcome link after the phone
+   share opens that ad again. */
+function renderStartBot() {
+  const jobId = state.view.jobId;
+  const botUrl = "https://t.me/YThiringai" + (jobId ? "?start=job_" + jobId : "");
+  viewEl().innerHTML =
+    '<div class="verify-hero"><div class="shield" style="background:#e8f0fe"><span style="font-size:36px;line-height:1">🤖</span></div>' +
+    '<h2>اول ربات رو استارت کن</h2>' +
+    '<p>برای ارسال درخواست، اول باید ربات رو استارت کنی و شماره تلفنت رو بفرستی. روی دکمه‌ی زیر بزن تا چت ربات باز بشه، بعد دکمه‌ی Start رو بزن و شماره‌ت رو بفرست.</p></div>' +
+    '<button class="btn btn-center" type="button" id="start-bot-open">استارت ربات</button>';
+  const b = document.getElementById("start-bot-open");
+  if (b) b.addEventListener("click", function () {
+    if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) Telegram.WebApp.openTelegramLink(botUrl);
+    else window.open(botUrl, "_blank");
+  });
+  startBotPolling();
+}
+function startBotPolling() {
+  if (state.botTimer) return;
+  state.botTimer = setInterval(function () {
+    if (state.view.name !== "start-bot") { stopBotPolling(); return; }
+    loadVerification().then(function (v) {
+      if (state.view.name !== "start-bot") return;
+      if (v && v.phone_verified) { stopBotPolling(); openVerify(); }
+    }).catch(function () {});
+  }, 10000);
+}
+function stopBotPolling() {
+  if (state.botTimer) { clearInterval(state.botTimer); state.botTimer = null; }
+}
+
 /* v124: live-camera verification. Front photo first, then profile;
    the white oval turns green only when the face sits exactly inside
    it (FaceDetector when the phone has it; without it the user aligns
@@ -4910,17 +4960,19 @@ function render() {
   stopChatPolling();
   stopChatRealtime();
   stopVerifyPolling(); // v122: the verify screen restarts its own poll when it renders
+  stopBotPolling(); // v133: the start-bot screen restarts its own poll when it renders
   stopCamera(); // v124: leaving the verify screen closes the camera
   // The welcome and onboarding screens have no tab bar (choose first);
   // neither does the chat page (it has its own back button + fixed
   // composer).
-  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "onboarding" || state.view.name === "yt-connect" || state.view.name === "verify" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
+  document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "onboarding" || state.view.name === "yt-connect" || state.view.name === "verify" || state.view.name === "start-bot" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
   renderTabs();
   switch (state.view.name) {
     case "onboarding": renderOnboarding(); break;
     case "welcome": renderWelcome(); break;
     case "yt-connect": renderYtConnect(); break;
     case "verify": renderVerify(); break;
+    case "start-bot": renderStartBot(); break;
     case "job-detail": openJobDetail(state.view.jobId); break;
     case "apply-warning": renderApplyWarning(); break;
     case "post": renderPost(); break;
@@ -5045,7 +5097,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v132 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v133 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
