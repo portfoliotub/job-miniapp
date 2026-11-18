@@ -571,7 +571,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v134</span>
+<span class="app-version" id="app-version">v135</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -736,27 +736,43 @@ function setRole(r) {
 }
 /* v90: onboarding — every new user (no role yet) is asked once how they
    found the bot, BEFORE the role cards. The answer is stored locally
-   (yt_source + yt_onboarded) so the question never repeats on this
-   device, and recorded in Supabase with the role they then pick
-   (onboarding_responses) — one row per role pick.
+   so the question never repeats for that account, and recorded in
+   Supabase with the role they then pick (onboarding_responses) — one
+   row per role pick.
    v91: the gate is a VERSION, not the role. The role + onboarded flags
    live on the device (localStorage + Telegram CloudStorage), NOT in the
    database — so wiping the DB never re-asks anyone. Bumping
    ONBOARD_VERSION re-asks EVERYONE (old and new) the question and then
-   the role cards, exactly once per version. */
-const ONBOARD_KEY = "yt_onboarded";
-const SOURCE_KEY = "yt_source";
+   the role cards, exactly once per version.
+   v135 (user order 2026-11-18): the onboarding answers are PER
+   Telegram account, like the role key since v134. The three keys used
+   to be shared localStorage keys (yt_source, yt_onboarded,
+   yt_onboarded_v), so a fresh account on a phone where another account
+   had already answered inherited the answer and skipped the question —
+   the role pick came BEFORE the question. The order is now enforced
+   per account: question → role → verification (freelancer: the verify
+   screen right after the role pick; employer: the YouTube connect
+   screen). NO migration from the legacy keys: they carry no owner id,
+   so adopting them for whoever opens the app first would leak them
+   once more (same rule as the v95 profile key). The legacy keys stay
+   in localStorage, unread. Every account answers the question once
+   more, then picks a role again. */
+const ONBOARD_KEY_PREFIX = "yt_onboarded_";
+const SOURCE_KEY_PREFIX = "yt_source_";
 const ONBOARD_VERSION = "v94";
-const ONBOARD_VERSION_KEY = "yt_onboarded_v";
-function getOnboardVersion() { return store.get(ONBOARD_VERSION_KEY) || ""; }
+const ONBOARD_VERSION_KEY_PREFIX = "yt_onboarded_v_";
+function onboardKey() { return ONBOARD_KEY_PREFIX + (me() ? me().id : "anon"); }
+function sourceKey() { return SOURCE_KEY_PREFIX + (me() ? me().id : "anon"); }
+function onboardVersionKey() { return ONBOARD_VERSION_KEY_PREFIX + (me() ? me().id : "anon"); }
+function getOnboardVersion() { return store.get(onboardVersionKey()) || ""; }
 const SOURCES = ["تلگرام", "یوتیوب", "اینستاگرام", "دوست یا آشنا", "جستجو در گوگل", "سایر"];
-function getOnboarded() { return store.get(ONBOARD_KEY) === "1"; }
+function getOnboarded() { return store.get(onboardKey()) === "1"; }
 function recordOnboarding(role) {
   // Best-effort: the flow must never block on this write (same rule as
   // notify_job_posted). No-op in mock mode and when there is no answer
   // to record (e.g. a pre-v90 user switching roles).
   if (MOCK) return;
-  const src = store.get(SOURCE_KEY);
+  const src = store.get(sourceKey());
   if (!src) return;
   sbInsert("onboarding_responses", { telegram_id: me().id, source: src, role: role }).then(function () {}, function () {});
 }
@@ -1027,9 +1043,9 @@ function renderOnboarding() {
     "</div>";
   viewEl().querySelectorAll("[data-source]").forEach(function (el) {
     el.addEventListener("click", function () {
-      store.set(SOURCE_KEY, el.getAttribute("data-source"));
-      store.set(ONBOARD_KEY, "1");
-      store.set(ONBOARD_VERSION_KEY, ONBOARD_VERSION);
+      store.set(sourceKey(), el.getAttribute("data-source"));
+      store.set(onboardKey(), "1");
+      store.set(onboardVersionKey(), ONBOARD_VERSION);
       showWelcome();
     });
   });
@@ -5110,7 +5126,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v134 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v135 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
