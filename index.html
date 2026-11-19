@@ -573,7 +573,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v141</span>
+<span class="app-version" id="app-version">v142</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -2988,9 +2988,10 @@ function renderMyJobs() {
         "</div>";
     }).join("");
   }
-  html += '<button class="btn btn-ghost role-switch" id="switch-role">تغییر نقش</button>';
+  // v142 (user order 2026-11-19): the «تغییر نقش» button is gone from
+  // my-jobs — role switching stays on the profile screens and the
+  // verify screen only.
   viewEl().innerHTML = html;
-  document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
   viewEl().querySelectorAll("[data-edit-job]").forEach(function (btn) {
     btn.addEventListener("click", function (ev) { ev.stopPropagation(); openEditJob(parseInt(btn.getAttribute("data-edit-job"), 10)); });
   });
@@ -5269,7 +5270,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v141 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v142 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
