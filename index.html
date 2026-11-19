@@ -573,7 +573,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v139</span>
+<span class="app-version" id="app-version">v140</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4471,7 +4471,13 @@ function stopBotPolling() {
    shot; a phone without FaceDetector captures on steadiness alone.
    v139 (user order 2026-11-19): the hold is ~3s (9 ticks), not ~1s —
    the shot was too fast to settle fully inside the oval; the hint
-   counts the seconds down while the oval is green. */
+   counts the seconds down while the oval is green.
+   v140 (user order 2026-11-19): step-by-step — the profile step
+   only arms after the user actually turns (needMotion: a big frame
+   change, 4s timeout escape), and the shot waits until the face
+   FULLY fills the oval (skin-fraction gate on the oval's ellipse;
+   FaceDetector path uses the fitted box). A ~7s long-steady hold
+   fires anyway so odd light/tones never strand the user. */
 function camHtml(cam) {
   if (cam.step === "done") {
     return '<div class="cam-shots">' +
@@ -4488,7 +4494,7 @@ function camHtml(cam) {
   return h;
 }
 function startCamera() {
-  state.cam = { step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, faceAligned: false, autoDetect: false, error: null, alignedTicks: 0, prevFrame: null, prevTime: 0, steadyCv: null, steadyCtx: null, autoHoldUntil: 0 };
+  state.cam = { step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, faceAligned: false, autoDetect: false, error: null, alignedTicks: 0, longSteadyTicks: 0, needMotion: false, prevFrame: null, prevTime: 0, steadyCv: null, steadyCtx: null, autoHoldUntil: 0 };
   renderVerify();
   startCameraStream();
 }
@@ -4539,9 +4545,10 @@ function detectFaceTick() {
   if (!cam || cam.step === "done") return;
   const v = document.getElementById("cam-video");
   if (!v || !v.videoWidth) return;
-  // Steadiness (sync): is this frame nearly identical to the last
-  // one? A face held still in the oval reads as steady.
-  const steadyNow = frameIsSteady(v);
+  // One frame sample per tick: steadiness + what fills the oval.
+  const st = sampleFrame(v);
+  const steadyNow = !!(st && st.playing && st.lum > 12 && st.diff < 14);
+  const skinOk = !!(st && faceFillsOval(v, st.data));
   // Face box (async, when the phone has FaceDetector): updates
   // cam.faceAligned whenever a detection resolves.
   if (cam.detector && !cam.detecting) {
@@ -4553,31 +4560,40 @@ function detectFaceTick() {
       updateCamUi();
     }).catch(function () { cam.detecting = false; cam.faceAligned = false; });
   }
-  // Either signal counts: a face inside the oval, or a frame held
-  // steady. The face must hold for 9 ticks (~3s) before the app
-  // shoots by itself — the user needs time to settle fully inside
-  // the oval (v139: the ~1s hold shot too fast).
-  cam.aligned = !!cam.faceAligned || steadyNow;
+  // v140: after the front shot the profile step must wait for the
+  // user to actually turn — a big frame change clears the gate; a
+  // 4s timeout clears it too so a slow turn never strands the user.
+  if (cam.needMotion) {
+    if (st && st.diff >= 20) { cam.needMotion = false; cam.alignedTicks = 0; cam.longSteadyTicks = 0; cam.prevFrame = null; }
+    else if (Date.now() > (cam.autoHoldUntil || 0) + 4000) { cam.needMotion = false; }
+  }
+  // Long-steady escape: if the user holds still for ~7s the shot
+  // fires even when the skin check can't confirm the face (odd
+  // light or tone) — a stuck user is worse than a loose gate; the
+  // human review still checks the photo.
+  if (steadyNow) cam.longSteadyTicks = (cam.longSteadyTicks || 0) + 1; else cam.longSteadyTicks = 0;
+  const inOval = !!cam.faceAligned || skinOk || (cam.longSteadyTicks || 0) >= 20;
+  cam.aligned = steadyNow && inOval && !cam.needMotion;
   if (Date.now() < (cam.autoHoldUntil || 0)) { cam.alignedTicks = 0; }
   else if (cam.aligned) { cam.alignedTicks = (cam.alignedTicks || 0) + 1; }
   else { cam.alignedTicks = 0; }
   updateCamUi();
   if (cam.aligned && (cam.alignedTicks || 0) >= 9 && cam.step && cam.step !== "done" && Date.now() >= (cam.autoHoldUntil || 0)) capturePhoto(true);
 }
-function frameIsSteady(videoEl) {
+function sampleFrame(videoEl) {
   const cam = state.cam;
-  if (!cam) return false;
+  if (!cam) return null;
   if (!cam.steadyCv) {
     cam.steadyCv = document.createElement("canvas");
     cam.steadyCv.width = 32; cam.steadyCv.height = 32;
     cam.steadyCtx = cam.steadyCv.getContext("2d", { willReadFrequently: true });
   }
   const ctx = cam.steadyCtx;
-  if (!ctx) return false;
-  try { ctx.drawImage(videoEl, 0, 0, 32, 32); } catch (e) { return false; }
+  if (!ctx) return null;
+  try { ctx.drawImage(videoEl, 0, 0, 32, 32); } catch (e) { return null; }
   let d;
-  try { d = ctx.getImageData(0, 0, 32, 32).data; } catch (e) { return false; }
-  if (!cam.prevFrame) { cam.prevFrame = d; cam.prevTime = videoEl.currentTime; return false; }
+  try { d = ctx.getImageData(0, 0, 32, 32).data; } catch (e) { return null; }
+  if (!cam.prevFrame) { cam.prevFrame = d; cam.prevTime = videoEl.currentTime; return { data: d, diff: 0, lum: 0, playing: false }; }
   let sum = 0, lum = 0;
   const n = d.length / 4;
   for (let i = 0; i < d.length; i += 4) {
@@ -4585,14 +4601,47 @@ function frameIsSteady(videoEl) {
     lum += d[i] + d[i + 1] + d[i + 2];
   }
   cam.prevFrame = d;
-  const meanDiff = sum / (n * 3);
-  const meanLum = lum / (n * 3);
-  // The stream must actually be playing (currentTime advancing) and
-  // the frame must not be black — otherwise a frozen or dark frame
-  // would read as "steady" and shoot by itself.
   const playing = videoEl.currentTime > (cam.prevTime || 0);
   cam.prevTime = videoEl.currentTime;
-  return playing && meanLum > 12 && meanDiff < 14;
+  return { data: d, diff: sum / (n * 3), lum: lum / (n * 3), playing: playing };
+}
+function isSkinPixel(r, g, b) {
+  // Classic YCbCr skin test — covers a wide range of skin tones
+  // and light; neutral grey fails it (Cr/Cb both ~128).
+  const y = 0.299 * r + 0.587 * g + 0.114 * b;
+  const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+  const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+  return y > 50 && cr >= 133 && cr <= 173 && cb >= 77 && cb <= 127;
+}
+function faceFillsOval(videoEl, data) {
+  // v140: the face must FULLY fill the oval before the shot — sample
+  // the oval's ellipse on the 32x32 frame and require at least half
+  // of it to be skin. A face half outside the oval shows background
+  // in the ellipse and fails.
+  const el = videoEl.getBoundingClientRect();
+  const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+  if (!vw || !vh || !el.width || !el.height || !data) return false;
+  const oval = document.querySelector(".cam-oval");
+  if (!oval) return false;
+  const or = oval.getBoundingClientRect();
+  const scale = Math.max(el.width / vw, el.height / vh);
+  const ox = (el.width - vw * scale) / 2, oy = (el.height - vh * scale) / 2;
+  // Oval centre/radii in video pixels, then in 32x32 canvas pixels.
+  const ocx = ((or.left - el.left + or.width / 2 - ox) / scale) * (32 / vw);
+  const ocy = ((or.top - el.top + or.height / 2 - oy) / scale) * (32 / vh);
+  const orx = (or.width / scale) * (32 / vw) / 2;
+  const ory = (or.height / scale) * (32 / vh) / 2;
+  let skin = 0, total = 0;
+  for (let j = 0; j < 32; j++) {
+    for (let i = 0; i < 32; i++) {
+      const dx = (i + 0.5 - ocx) / orx, dy = (j + 0.5 - ocy) / ory;
+      if (dx * dx + dy * dy > 1) continue;
+      total++;
+      const k = (j * 32 + i) * 4;
+      if (isSkinPixel(data[k], data[k + 1], data[k + 2])) skin++;
+    }
+  }
+  return total > 0 && skin / total >= 0.5;
 }
 function faceFitsOval(box, videoEl) {
   // The detector box is in video pixels; the video displays with
@@ -4613,14 +4662,14 @@ function faceFitsOval(box, videoEl) {
   const cx = fx + fw / 2, cy = fy + fh / 2;
   const ocx = or.left - el.left + or.width / 2, ocy = or.top - el.top + or.height / 2;
   const centerOk = Math.abs(cx - ocx) <= or.width * 0.15 && Math.abs(cy - ocy) <= or.height * 0.15;
-  const sizeOk = fw >= or.width * 0.45 && fw <= or.width * 1.05 && fh >= or.height * 0.45 && fh <= or.height * 1.05;
+  const sizeOk = fw >= or.width * 0.45 && fw <= or.width * 1.0 && fh >= or.height * 0.45 && fh <= or.height * 1.0;
   return centerOk && sizeOk;
 }
 function camHintText() {
   const cam = state.cam;
   if (!cam) return "";
   if (cam.step === "done") return "هر دو عکس ثبت شد — بفرست برای بررسی.";
-  let stepTxt = cam.step === "front" ? "تمام‌رخ: رو به دوربین" : "نیم‌رخ: سرت رو آروم به چپ بچرخون";
+  let stepTxt = cam.step === "front" ? "مرحله ۱ از ۲ — تمام‌رخ: رو به دوربین" : "مرحله ۲ از ۲ — نیم‌رخ: سرت رو آروم به چپ بچرخون";
   if (cam.step === "profile" && cam.front) stepTxt = "تمام‌رخ ثبت شد ✓ — " + stepTxt;
   if (cam.aligned) {
     // v139: the shot waits ~3s so the face can settle fully inside
@@ -4654,15 +4703,18 @@ function capturePhoto(isAuto) {
   const url = c.toDataURL("image/jpeg", 0.82);
   if (cam.step === "front") {
     cam.front = url; cam.step = "profile";
-    // v137: after the front shot, give the user 1.5s to turn for the
-    // profile shot before auto-capture arms again — otherwise the
-    // profile shot would be a second front photo.
-    cam.autoHoldUntil = Date.now() + 1500;
+    // v140: the profile step is a separate step — give the user
+    // 2.5s to turn, and don't arm the capture until the frame has
+    // actually moved (needMotion), so the profile shot can't be a
+    // second front photo taken while still facing forward.
+    cam.autoHoldUntil = Date.now() + 2500;
+    cam.needMotion = true;
   }
   else if (cam.step === "profile") { cam.profile = url; cam.step = "done"; stopCameraStream(); }
   cam.aligned = false;
   cam.faceAligned = false;
   cam.alignedTicks = 0;
+  cam.longSteadyTicks = 0;
   cam.prevFrame = null;
   renderVerify();
 }
@@ -5208,7 +5260,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v139 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v140 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
