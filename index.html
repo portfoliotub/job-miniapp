@@ -573,7 +573,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v142</span>
+<span class="app-version" id="app-version">v143</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4780,10 +4780,13 @@ function renderWelcome() {
   viewEl().querySelectorAll("[data-role]").forEach(function (el) {
     el.addEventListener("click", function () {
       const picked = el.getAttribute("data-role");
-      // v117: an employer registers ONLY with their own YouTube
-      // account — the employer card goes through the connect gate
-      // (which auto-advances when a verified channel already exists).
-      if (picked === "employer") { openYtConnect(); return; }
+      // v143 (user order 2026-11-19): the employer role is saved the
+      // moment he picks it — before the YouTube connect gate. The role
+      // used to be set only once a verified channel was found, so a
+      // failed connect left the role unset (or freelancer) and the
+      // freelancer verification gate kept routing him to the verify
+      // screen. The YouTube gate for posting is untouched (v117).
+      if (picked === "employer") { setRole("employer"); openYtConnect(); return; }
       setRole(picked);
       // v122: a freelancer registers ONLY verified — the phone + video
       // check runs before the home tab or the deep-linked ad (v92: the
@@ -5270,7 +5273,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v142 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v143 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
