@@ -573,7 +573,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v138</span>
+<span class="app-version" id="app-version">v139</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4468,7 +4468,10 @@ function stopBotPolling() {
    v138 (user order 2026-11-19): the manual capture button is REMOVED
    — capture is auto-only, and the steadiness check runs in parallel
    with FaceDetector on every tick, so either signal can fire the
-   shot; a phone without FaceDetector captures on steadiness alone. */
+   shot; a phone without FaceDetector captures on steadiness alone.
+   v139 (user order 2026-11-19): the hold is ~3s (9 ticks), not ~1s —
+   the shot was too fast to settle fully inside the oval; the hint
+   counts the seconds down while the oval is green. */
 function camHtml(cam) {
   if (cam.step === "done") {
     return '<div class="cam-shots">' +
@@ -4551,14 +4554,15 @@ function detectFaceTick() {
     }).catch(function () { cam.detecting = false; cam.faceAligned = false; });
   }
   // Either signal counts: a face inside the oval, or a frame held
-  // steady. The face must hold for 3 ticks (~1s) before the app
-  // shoots by itself.
+  // steady. The face must hold for 9 ticks (~3s) before the app
+  // shoots by itself — the user needs time to settle fully inside
+  // the oval (v139: the ~1s hold shot too fast).
   cam.aligned = !!cam.faceAligned || steadyNow;
   if (Date.now() < (cam.autoHoldUntil || 0)) { cam.alignedTicks = 0; }
   else if (cam.aligned) { cam.alignedTicks = (cam.alignedTicks || 0) + 1; }
   else { cam.alignedTicks = 0; }
   updateCamUi();
-  if (cam.aligned && (cam.alignedTicks || 0) >= 3 && cam.step && cam.step !== "done" && Date.now() >= (cam.autoHoldUntil || 0)) capturePhoto(true);
+  if (cam.aligned && (cam.alignedTicks || 0) >= 9 && cam.step && cam.step !== "done" && Date.now() >= (cam.autoHoldUntil || 0)) capturePhoto(true);
 }
 function frameIsSteady(videoEl) {
   const cam = state.cam;
@@ -4618,7 +4622,13 @@ function camHintText() {
   if (cam.step === "done") return "هر دو عکس ثبت شد — بفرست برای بررسی.";
   let stepTxt = cam.step === "front" ? "تمام‌رخ: رو به دوربین" : "نیم‌رخ: سرت رو آروم به چپ بچرخون";
   if (cam.step === "profile" && cam.front) stepTxt = "تمام‌رخ ثبت شد ✓ — " + stepTxt;
-  if (cam.aligned) return stepTxt + " ✓ سبز شد — دارم عکس می‌گیرم...";
+  if (cam.aligned) {
+    // v139: the shot waits ~3s so the face can settle fully inside
+    // the oval — count the seconds down so the user knows to hold still.
+    const remain = Math.max(1, Math.ceil((9 - (cam.alignedTicks || 0)) * 0.35));
+    const fa = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+    return stepTxt + " ✓ سبز شد — " + fa[remain] + " ثانیه تا عکس...";
+  }
   if (cam.autoDetect) return stepTxt + " — صورتت رو دقیق داخل بیضی بذار تا سبز بشه، عکس خودکار گرفته می‌شه.";
   return stepTxt + " — صورتت رو داخل بیضی بذار و ثابت نگه دار، عکس خودکار گرفته می‌شه.";
 }
@@ -5198,7 +5208,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v138 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v139 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
