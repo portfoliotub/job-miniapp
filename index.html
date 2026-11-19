@@ -573,7 +573,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v140</span>
+<span class="app-version" id="app-version">v141</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4361,6 +4361,13 @@ function renderVerify() {
     } else {
       html += '<button class="btn btn-center" type="button" id="verify-open-camera">باز کردن دوربین</button>';
     }
+    // v141 (user order 2026-11-19): a «تغییر نقش» option below the
+    // camera button — an unverified freelancer who picked the wrong
+    // role was stuck on this screen with no way out (no back button
+    // since v132). Switching roles goes to the role pick; picking
+    // freelancer again lands back on verify, picking employer goes
+    // to the YouTube gate. Never shown while the camera is open.
+    if (!(cam && cam.step)) html += '<button class="btn btn-ghost btn-center" type="button" id="verify-switch-role">تغییر نقش</button>';
   }
   if (isVerified(v)) {
     html += '<div class="card"><span class="muted">هویتت تایید شد ✓ — حالا می‌تونی برای آگهی‌ها درخواست بفرستی.</span></div>';
@@ -4381,6 +4388,8 @@ function renderVerify() {
   });
   const camBtn = document.getElementById("verify-open-camera");
   if (camBtn) camBtn.addEventListener("click", startCamera);
+  const swBtn = document.getElementById("verify-switch-role");
+  if (swBtn) swBtn.addEventListener("click", function () { showWelcome(); });
   const sendBtn = document.getElementById("verify-send-photos");
   if (sendBtn) sendBtn.addEventListener("click", sendVerificationPhotos);
   const retakeBtn = document.getElementById("verify-retake");
@@ -5260,7 +5269,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v140 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v141 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
