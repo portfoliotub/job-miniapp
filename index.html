@@ -571,7 +571,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v136</span>
+<span class="app-version" id="app-version">v137</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4339,7 +4339,7 @@ function renderVerify() {
     if (vs === "approved") camBody = "احراز هویتت تایید شد ✓";
     else if (vs === "pending") camBody = "عکس‌های احراز هویت دریافت شد ✓ — نتیجه بررسی احراز هویت شما ظرف ۲۴ ساعت آینده اعلام می‌شود.";
     else if (vs === "rejected") camBody = "احراز هویتت تایید نشد" + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.";
-    else camBody = "با دوربین گوشی دو تا عکس بگیر: اول تمام‌رخ، بعد نیم‌رخ. صورتت رو دقیق داخل بیضی بذار تا سبز بشه.";
+    else camBody = "دوربین خودش عکس می‌گیره: صورتت رو دقیق داخل بیضی بذار تا سبز بشه — اول تمام‌رخ، بعد نیم‌رخ.";
     html += verifyStepHtml(2, "احراز هویت با دوربین", camBody, videoDone);
   } else if (vs === "rejected") {
     // A retake still needs the reason on screen — one line, not a card.
@@ -4458,7 +4458,14 @@ function stopBotPolling() {
    the white oval turns green only when the face sits exactly inside
    it (FaceDetector when the phone has it; without it the user aligns
    by eye and the capture button stays enabled). Photos are downscaled
-   to <=1024px JPEG before sending. */
+   to <=1024px JPEG before sending.
+   v137 (user order 2026-11-19): the capture is AUTOMATIC — once the
+   face holds steady inside the oval for ~1s (3 detection ticks) the
+   app takes the photo itself, no tap. After the front shot it tells
+   the user to turn for the profile shot (1.5s pause, then the same
+   auto-capture). The button stays as a manual fallback, and if the
+   detector sees no face at all for ~4s it enables too, so a weak
+   detector can never strand the user. */
 function camHtml(cam) {
   if (cam.step === "done") {
     return '<div class="cam-shots">' +
@@ -4476,7 +4483,7 @@ function camHtml(cam) {
   return h;
 }
 function startCamera() {
-  state.cam = { step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, autoDetect: false, error: null };
+  state.cam = { step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, autoDetect: false, error: null, alignedTicks: 0, noFaceTicks: 0, manualOk: false, autoHoldUntil: 0 };
   renderVerify();
   startCameraStream();
 }
@@ -4532,8 +4539,21 @@ function detectFaceTick() {
   cam.detector.detect(v).then(function (faces) {
     cam.detecting = false;
     if (!state.cam || state.cam !== cam) return;
-    cam.aligned = !!(faces && faces.length === 1 && faceFitsOval(faces[0].boundingBox, v));
+    const faceCount = faces ? faces.length : 0;
+    cam.aligned = faceCount === 1 && faceFitsOval(faces[0].boundingBox, v);
+    // v137: auto-capture — the face must hold steady inside the oval
+    // for 3 ticks (~1s) before the app shoots by itself.
+    if (Date.now() < (cam.autoHoldUntil || 0)) { cam.alignedTicks = 0; }
+    else if (cam.aligned) { cam.alignedTicks = (cam.alignedTicks || 0) + 1; cam.noFaceTicks = 0; }
+    else {
+      cam.alignedTicks = 0;
+      if (faceCount === 0) {
+        cam.noFaceTicks = (cam.noFaceTicks || 0) + 1;
+        if (cam.noFaceTicks >= 12) cam.manualOk = true;
+      } else cam.noFaceTicks = 0;
+    }
     updateCamUi();
+    if (cam.autoDetect && cam.aligned && (cam.alignedTicks || 0) >= 3 && cam.step && cam.step !== "done" && Date.now() >= (cam.autoHoldUntil || 0)) capturePhoto(true);
   }).catch(function () { cam.detecting = false; });
 }
 function faceFitsOval(box, videoEl) {
@@ -4562,9 +4582,12 @@ function camHintText() {
   const cam = state.cam;
   if (!cam) return "";
   if (cam.step === "done") return "هر دو عکس ثبت شد — بفرست برای بررسی.";
-  const stepTxt = cam.step === "front" ? "تمام‌رخ: رو به دوربین" : "نیم‌رخ: سرت رو آروم به چپ بچرخون";
+  let stepTxt = cam.step === "front" ? "تمام‌رخ: رو به دوربین" : "نیم‌رخ: سرت رو آروم به چپ بچرخون";
+  if (cam.step === "profile" && cam.front) stepTxt = "تمام‌رخ ثبت شد ✓ — " + stepTxt;
   if (!cam.autoDetect) return stepTxt + " — صورتت رو داخل بیضی بذار و دکمه ثبت رو بزن.";
-  return stepTxt + (cam.aligned ? " ✓ سبز شد — ثبت کن." : " — صورتت رو دقیق داخل بیضی بذار تا سبز بشه.");
+  if (cam.aligned) return stepTxt + " ✓ سبز شد — دارم عکس می‌گیرم...";
+  if (cam.manualOk) return stepTxt + " — تشخیص چهره سخت شد؛ می‌تونی دستی ثبت کنی.";
+  return stepTxt + " — صورتت رو دقیق داخل بیضی بذار تا سبز بشه، عکس خودکار گرفته می‌شه.";
 }
 function updateCamUi() {
   const cam = state.cam;
@@ -4573,13 +4596,17 @@ function updateCamUi() {
   if (oval) oval.classList.toggle("ok", !!cam.aligned);
   const cap = document.getElementById("cam-capture");
   if (cap) {
-    cap.disabled = cam.autoDetect && !cam.aligned;
+    // v137: the button is a manual fallback — it stays enabled when
+    // the face is aligned (tap before the auto shot) and when the
+    // detector has seen no face for ~4s, so a weak detector can never
+    // strand the user on a disabled button.
+    cap.disabled = cam.autoDetect && !cam.aligned && !cam.manualOk;
     cap.textContent = cam.step === "front" ? "ثبت تمام‌رخ" : "ثبت نیم‌رخ";
   }
   const hint = document.getElementById("cam-hint");
   if (hint) hint.textContent = camHintText();
 }
-function capturePhoto() {
+function capturePhoto(isAuto) {
   const cam = state.cam;
   if (!cam || !cam.step || cam.step === "done") return;
   const v = document.getElementById("cam-video");
@@ -4591,9 +4618,18 @@ function capturePhoto() {
   c.height = Math.round(v.videoHeight * scale);
   c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
   const url = c.toDataURL("image/jpeg", 0.82);
-  if (cam.step === "front") { cam.front = url; cam.step = "profile"; }
+  if (cam.step === "front") {
+    cam.front = url; cam.step = "profile";
+    // v137: after the front shot, give the user 1.5s to turn for the
+    // profile shot before auto-capture arms again — otherwise the
+    // profile shot would be a second front photo.
+    cam.autoHoldUntil = Date.now() + 1500;
+  }
   else if (cam.step === "profile") { cam.profile = url; cam.step = "done"; stopCameraStream(); }
   cam.aligned = false;
+  cam.alignedTicks = 0;
+  cam.noFaceTicks = 0;
+  cam.manualOk = false;
   renderVerify();
 }
 function stopCameraStream() {
@@ -5138,7 +5174,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v136 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v137 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
