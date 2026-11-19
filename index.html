@@ -231,8 +231,10 @@
   .step-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #e8eef4; color: var(--link); font-weight: 700; font-size: 14px; flex: none; }
   .step-num.done { background: #1faa59; color: #fff; }
   /* v124: live-camera verification — the frame is the phone camera, the
-     white oval is the face guide; it turns green only when the face
-     sits exactly inside it (FaceDetector when the phone has it). */
+     white oval is the face guide; it turns green when the face holds
+     steady inside it (FaceDetector when the phone has it, frame
+     steadiness otherwise — Telegram's Android WebView has no
+     FaceDetector). */
   .cam-frame { position: relative; width: 100%; aspect-ratio: 3 / 4; background: #000; border-radius: 12px; overflow: hidden; margin-top: 10px; }
   .cam-frame video { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); /* v127: mirror the selfie preview like the native camera app — without this the preview moves opposite to the user. The captured photo stays unmirrored: canvas drawImage ignores the element's CSS transform. */ }
   .cam-oval { position: absolute; left: 50%; top: 50%; width: 62%; aspect-ratio: 3 / 4; transform: translate(-50%, -50%); border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0,0,0,0.45); pointer-events: none; }
@@ -571,7 +573,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v137</span>
+<span class="app-version" id="app-version">v138</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4339,7 +4341,7 @@ function renderVerify() {
     if (vs === "approved") camBody = "احراز هویتت تایید شد ✓";
     else if (vs === "pending") camBody = "عکس‌های احراز هویت دریافت شد ✓ — نتیجه بررسی احراز هویت شما ظرف ۲۴ ساعت آینده اعلام می‌شود.";
     else if (vs === "rejected") camBody = "احراز هویتت تایید نشد" + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.";
-    else camBody = "دوربین خودش عکس می‌گیره: صورتت رو دقیق داخل بیضی بذار تا سبز بشه — اول تمام‌رخ، بعد نیم‌رخ.";
+    else camBody = "دوربین خودش عکس می‌گیره: صورتت رو دقیق داخل بیضی بذار و ثابت نگه دار — اول تمام‌رخ، بعد نیم‌رخ.";
     html += verifyStepHtml(2, "احراز هویت با دوربین", camBody, videoDone);
   } else if (vs === "rejected") {
     // A retake still needs the reason on screen — one line, not a card.
@@ -4379,8 +4381,6 @@ function renderVerify() {
   });
   const camBtn = document.getElementById("verify-open-camera");
   if (camBtn) camBtn.addEventListener("click", startCamera);
-  const capBtn = document.getElementById("cam-capture");
-  if (capBtn) capBtn.addEventListener("click", capturePhoto);
   const sendBtn = document.getElementById("verify-send-photos");
   if (sendBtn) sendBtn.addEventListener("click", sendVerificationPhotos);
   const retakeBtn = document.getElementById("verify-retake");
@@ -4455,17 +4455,20 @@ function stopBotPolling() {
 }
 
 /* v124: live-camera verification. Front photo first, then profile;
-   the white oval turns green only when the face sits exactly inside
-   it (FaceDetector when the phone has it; without it the user aligns
-   by eye and the capture button stays enabled). Photos are downscaled
-   to <=1024px JPEG before sending.
+   the white oval turns green when the face holds steady inside it
+   (FaceDetector when the phone has it; otherwise frame steadiness —
+   Telegram's Android WebView has no FaceDetector, so v137's
+   FaceDetector-only auto-capture could never fire there). Photos are
+   downscaled to <=1024px JPEG before sending.
    v137 (user order 2026-11-19): the capture is AUTOMATIC — once the
    face holds steady inside the oval for ~1s (3 detection ticks) the
    app takes the photo itself, no tap. After the front shot it tells
    the user to turn for the profile shot (1.5s pause, then the same
-   auto-capture). The button stays as a manual fallback, and if the
-   detector sees no face at all for ~4s it enables too, so a weak
-   detector can never strand the user. */
+   auto-capture).
+   v138 (user order 2026-11-19): the manual capture button is REMOVED
+   — capture is auto-only, and the steadiness check runs in parallel
+   with FaceDetector on every tick, so either signal can fire the
+   shot; a phone without FaceDetector captures on steadiness alone. */
 function camHtml(cam) {
   if (cam.step === "done") {
     return '<div class="cam-shots">' +
@@ -4475,15 +4478,14 @@ function camHtml(cam) {
       '<button class="btn" type="button" id="verify-retake">دوباره گرفتن عکس‌ها</button>';
   }
   let h = '<div class="cam-frame"><video id="cam-video" autoplay playsinline muted></video><div class="cam-oval" id="cam-oval"></div></div>' +
-    '<p class="cam-hint" id="cam-hint"></p>' +
-    '<button class="btn" type="button" id="cam-capture">ثبت تمام‌رخ</button>';
+    '<p class="cam-hint" id="cam-hint"></p>';
   if (cam.front) {
     h += '<div class="cam-shots"><div><img src="' + cam.front + '" alt=""><div class="cam-shot-label">تمام‌رخ ✓</div></div></div>';
   }
   return h;
 }
 function startCamera() {
-  state.cam = { step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, autoDetect: false, error: null, alignedTicks: 0, noFaceTicks: 0, manualOk: false, autoHoldUntil: 0 };
+  state.cam = { step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, faceAligned: false, autoDetect: false, error: null, alignedTicks: 0, prevFrame: null, prevTime: 0, steadyCv: null, steadyCtx: null, autoHoldUntil: 0 };
   renderVerify();
   startCameraStream();
 }
@@ -4522,39 +4524,71 @@ function setupFaceDetection() {
   if (typeof window.FaceDetector === "function") {
     try { cam.detector = new FaceDetector({ fastMode: true }); cam.autoDetect = true; } catch (e) { cam.detector = null; }
   }
-  if (cam.detector) {
-    cam.timer = setInterval(detectFaceTick, 350);
-    updateCamUi();
-  } else {
-    cam.autoDetect = false;
-    updateCamUi();
-  }
+  // v138: the tick runs either way — with FaceDetector it checks the
+  // face box; without it (Telegram's Android WebView has no
+  // FaceDetector, so the oval could never turn green there) the
+  // steadiness check alone drives the auto-capture.
+  cam.timer = setInterval(detectFaceTick, 350);
+  updateCamUi();
 }
 function detectFaceTick() {
   const cam = state.cam;
-  if (!cam || !cam.detector || cam.detecting) return;
+  if (!cam || cam.step === "done") return;
   const v = document.getElementById("cam-video");
   if (!v || !v.videoWidth) return;
-  cam.detecting = true;
-  cam.detector.detect(v).then(function (faces) {
-    cam.detecting = false;
-    if (!state.cam || state.cam !== cam) return;
-    const faceCount = faces ? faces.length : 0;
-    cam.aligned = faceCount === 1 && faceFitsOval(faces[0].boundingBox, v);
-    // v137: auto-capture — the face must hold steady inside the oval
-    // for 3 ticks (~1s) before the app shoots by itself.
-    if (Date.now() < (cam.autoHoldUntil || 0)) { cam.alignedTicks = 0; }
-    else if (cam.aligned) { cam.alignedTicks = (cam.alignedTicks || 0) + 1; cam.noFaceTicks = 0; }
-    else {
-      cam.alignedTicks = 0;
-      if (faceCount === 0) {
-        cam.noFaceTicks = (cam.noFaceTicks || 0) + 1;
-        if (cam.noFaceTicks >= 12) cam.manualOk = true;
-      } else cam.noFaceTicks = 0;
-    }
-    updateCamUi();
-    if (cam.autoDetect && cam.aligned && (cam.alignedTicks || 0) >= 3 && cam.step && cam.step !== "done" && Date.now() >= (cam.autoHoldUntil || 0)) capturePhoto(true);
-  }).catch(function () { cam.detecting = false; });
+  // Steadiness (sync): is this frame nearly identical to the last
+  // one? A face held still in the oval reads as steady.
+  const steadyNow = frameIsSteady(v);
+  // Face box (async, when the phone has FaceDetector): updates
+  // cam.faceAligned whenever a detection resolves.
+  if (cam.detector && !cam.detecting) {
+    cam.detecting = true;
+    cam.detector.detect(v).then(function (faces) {
+      cam.detecting = false;
+      if (!state.cam || state.cam !== cam) return;
+      cam.faceAligned = !!(faces && faces.length === 1 && faceFitsOval(faces[0].boundingBox, v));
+      updateCamUi();
+    }).catch(function () { cam.detecting = false; cam.faceAligned = false; });
+  }
+  // Either signal counts: a face inside the oval, or a frame held
+  // steady. The face must hold for 3 ticks (~1s) before the app
+  // shoots by itself.
+  cam.aligned = !!cam.faceAligned || steadyNow;
+  if (Date.now() < (cam.autoHoldUntil || 0)) { cam.alignedTicks = 0; }
+  else if (cam.aligned) { cam.alignedTicks = (cam.alignedTicks || 0) + 1; }
+  else { cam.alignedTicks = 0; }
+  updateCamUi();
+  if (cam.aligned && (cam.alignedTicks || 0) >= 3 && cam.step && cam.step !== "done" && Date.now() >= (cam.autoHoldUntil || 0)) capturePhoto(true);
+}
+function frameIsSteady(videoEl) {
+  const cam = state.cam;
+  if (!cam) return false;
+  if (!cam.steadyCv) {
+    cam.steadyCv = document.createElement("canvas");
+    cam.steadyCv.width = 32; cam.steadyCv.height = 32;
+    cam.steadyCtx = cam.steadyCv.getContext("2d", { willReadFrequently: true });
+  }
+  const ctx = cam.steadyCtx;
+  if (!ctx) return false;
+  try { ctx.drawImage(videoEl, 0, 0, 32, 32); } catch (e) { return false; }
+  let d;
+  try { d = ctx.getImageData(0, 0, 32, 32).data; } catch (e) { return false; }
+  if (!cam.prevFrame) { cam.prevFrame = d; cam.prevTime = videoEl.currentTime; return false; }
+  let sum = 0, lum = 0;
+  const n = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) {
+    sum += Math.abs(d[i] - cam.prevFrame[i]) + Math.abs(d[i + 1] - cam.prevFrame[i + 1]) + Math.abs(d[i + 2] - cam.prevFrame[i + 2]);
+    lum += d[i] + d[i + 1] + d[i + 2];
+  }
+  cam.prevFrame = d;
+  const meanDiff = sum / (n * 3);
+  const meanLum = lum / (n * 3);
+  // The stream must actually be playing (currentTime advancing) and
+  // the frame must not be black — otherwise a frozen or dark frame
+  // would read as "steady" and shoot by itself.
+  const playing = videoEl.currentTime > (cam.prevTime || 0);
+  cam.prevTime = videoEl.currentTime;
+  return playing && meanLum > 12 && meanDiff < 14;
 }
 function faceFitsOval(box, videoEl) {
   // The detector box is in video pixels; the video displays with
@@ -4584,25 +4618,15 @@ function camHintText() {
   if (cam.step === "done") return "هر دو عکس ثبت شد — بفرست برای بررسی.";
   let stepTxt = cam.step === "front" ? "تمام‌رخ: رو به دوربین" : "نیم‌رخ: سرت رو آروم به چپ بچرخون";
   if (cam.step === "profile" && cam.front) stepTxt = "تمام‌رخ ثبت شد ✓ — " + stepTxt;
-  if (!cam.autoDetect) return stepTxt + " — صورتت رو داخل بیضی بذار و دکمه ثبت رو بزن.";
   if (cam.aligned) return stepTxt + " ✓ سبز شد — دارم عکس می‌گیرم...";
-  if (cam.manualOk) return stepTxt + " — تشخیص چهره سخت شد؛ می‌تونی دستی ثبت کنی.";
-  return stepTxt + " — صورتت رو دقیق داخل بیضی بذار تا سبز بشه، عکس خودکار گرفته می‌شه.";
+  if (cam.autoDetect) return stepTxt + " — صورتت رو دقیق داخل بیضی بذار تا سبز بشه، عکس خودکار گرفته می‌شه.";
+  return stepTxt + " — صورتت رو داخل بیضی بذار و ثابت نگه دار، عکس خودکار گرفته می‌شه.";
 }
 function updateCamUi() {
   const cam = state.cam;
   if (!cam) return;
   const oval = document.querySelector(".cam-oval");
   if (oval) oval.classList.toggle("ok", !!cam.aligned);
-  const cap = document.getElementById("cam-capture");
-  if (cap) {
-    // v137: the button is a manual fallback — it stays enabled when
-    // the face is aligned (tap before the auto shot) and when the
-    // detector has seen no face for ~4s, so a weak detector can never
-    // strand the user on a disabled button.
-    cap.disabled = cam.autoDetect && !cam.aligned && !cam.manualOk;
-    cap.textContent = cam.step === "front" ? "ثبت تمام‌رخ" : "ثبت نیم‌رخ";
-  }
   const hint = document.getElementById("cam-hint");
   if (hint) hint.textContent = camHintText();
 }
@@ -4627,9 +4651,9 @@ function capturePhoto(isAuto) {
   }
   else if (cam.step === "profile") { cam.profile = url; cam.step = "done"; stopCameraStream(); }
   cam.aligned = false;
+  cam.faceAligned = false;
   cam.alignedTicks = 0;
-  cam.noFaceTicks = 0;
-  cam.manualOk = false;
+  cam.prevFrame = null;
   renderVerify();
 }
 function stopCameraStream() {
@@ -5174,7 +5198,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v137 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v138 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
