@@ -9,11 +9,14 @@
   h1 { font-size: 22px; }
   h2 { font-size: 17px; margin-top: 28px; }
   a { color: #2481cc; }
+  .en { direction: ltr; text-align: left; font-family: Arial, sans-serif; line-height: 1.7; }
+  hr { margin: 48px 0; border: none; border-top: 1px solid #ccc; }
 </style>
 </head>
 <body>
 <h1>سیاست حریم خصوصی — YT Hiring</h1>
-<p>آخرین به‌روزرسانی: ۱۴ نوامبر ۲۰۲۶</p>
+<p>آخرین به‌روزرسانی: ۱۹ نوامبر ۲۰۲۶</p>
+<p><a href="#english">English version below — نسخه انگلیسی در پایین صفحه</a></p>
 
 <h2>چه داده‌ای جمع می‌شود</h2>
 <p>مینی‌اپ YT Hiring (ربات تلگرام <a href="https://t.me/YThiringai">@YThiringai</a>) این داده‌ها را نگه می‌دارد:</p>
@@ -22,6 +25,7 @@
   <li>برای کارفرما: عنوان و لینک کانال یوتیوب، که با ورود گوگل شما (فقط خواندن هویت کانال) تایید می‌شود؛</li>
   <li>متن آگهی‌ها، درخواست‌ها و پیام‌های چت بین کارفرما و فریلنسر.</li>
 </ul>
+<p>از حساب گوگل شما فقط عنوان کانال، شناسه کانال و لینک آن خوانده می‌شود (دسترسی youtube.readonly). رمز عبور، ایمیل، ویدیوها یا هر داده دیگری از حساب گوگل خوانده یا ذخیره نمی‌شود. توکن دسترسی گوگل ذخیره نمی‌شود.</p>
 
 <h2>داده‌ها برای چه استفاده می‌شوند</h2>
 <p>فقط برای کارکرد همین سرویس: تایید هویت کارفرما، نمایش آگهی‌ها و برقراری چت بین کارفرما و فریلنسر. داده‌ها به هیچ شخص یا سرویس ثالثی فروخته یا داده نمی‌شوند.</p>
@@ -30,7 +34,44 @@
 <h2>ورود گوگل</h2>
 <p>ورود گوگل فقط برای خواندن عنوان و لینک کانال یوتیوب شما استفاده می‌شود (دسترسی youtube.readonly). رمز عبور یا اطلاعات دیگر حساب گوگل شما خوانده یا ذخیره نمی‌شود.</p>
 
-<h2>حذف داده</h2>
-<p>برای حذف داده‌های خود با ربات <a href="https://t.me/YThiringai">@YThiringai</a> در تماس باشید.</p>
+<h2>حفاظت از داده‌ها</h2>
+<p>داده‌ها در پایگاه داده Supabase (PostgreSQL) نگهداری می‌شوند و دسترسی به آن‌ها با قوانین Row Level Security محدود شده است. همه ارتباطات فقط از طریق HTTPS انجام می‌شود. هیچ رمز عبور یا توکن دسترسی گوگل ذخیره نمی‌شود.</p>
+
+<h2>نگهداری و حذف داده</h2>
+<p>اطلاعات کانال یوتیوب تا زمانی که حساب کارفرما فعال است نگهداری می‌شود. آگهی‌ها و پیام‌های چت تا زمانی که حساب یا آگهی وجود دارد نگهداری می‌شوند. برای حذف داده‌های خود با ربات <a href="https://t.me/YThiringai">@YThiringai</a> در تماس باشید؛ درخواست حذف حداکثر ظرف ۳۰ روز انجام می‌شود.</p>
+
+<h2>داده‌های گوگل و هوش مصنوعی</h2>
+<p>داده‌های حساب گوگل شما برای آموزش یا بهبود مدل‌های هوش مصنوعی استفاده نمی‌شود و به هیچ سرویس هوش مصنوعی ثالثی داده نمی‌شود.</p>
+
+<hr>
+<div class="en" id="english">
+<h1>Privacy Policy — YT Hiring</h1>
+<p>Last updated: 19 November 2026</p>
+
+<h2>What data is collected</h2>
+<p>The YT Hiring mini app (Telegram bot <a href="https://t.me/YThiringai">@YThiringai</a>) stores:</p>
+<ul>
+  <li>Your Telegram ID, the name you enter in your profile, and a photo you choose yourself;</li>
+  <li>For employers: your YouTube channel title and link, verified through your own Google sign-in (read-only channel identity);</li>
+  <li>The text of job ads, applications, and chat messages between employer and freelancer.</li>
+</ul>
+<p>From your Google account we read only the channel title, channel ID and channel link (scope youtube.readonly). Your password, email, videos, or any other Google account data is never read or stored. Google access tokens are not stored.</p>
+
+<h2>How data is used</h2>
+<p>Only to run this service: verifying employer identity, showing job ads, and enabling chat between employer and freelancer. Data is never sold or given to any third party.</p>
+<p>An employer's verified YouTube channel is shown on the job ad published in the Telegram channel; all other data is visible only to the other party in the chat.</p>
+
+<h2>Google sign-in</h2>
+<p>Google sign-in is used only to read your YouTube channel title and link (scope youtube.readonly). No password or other Google account information is read or stored.</p>
+
+<h2>Data protection</h2>
+<p>Data is stored in a Supabase (PostgreSQL) database with access restricted by Row Level Security rules. All connections use HTTPS only. No passwords and no Google access tokens are stored.</p>
+
+<h2>Data retention and deletion</h2>
+<p>Your YouTube channel information is kept while your employer account is active. Ads and chat messages are kept while the account or ad exists. To delete your data, contact the bot <a href="https://t.me/YThiringai">@YThiringai</a>; deletion requests are completed within 30 days.</p>
+
+<h2>Google user data and AI</h2>
+<p>Google user data is not used to train or improve AI/ML models and is not shared with any third-party AI service. Our use of data received from Google APIs complies with the Google API Services User Data Policy, including the Limited Use requirements.</p>
+</div>
 </body>
 </html>
