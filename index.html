@@ -573,7 +573,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v144</span>
+<span class="app-version" id="app-version">v145</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4775,7 +4775,6 @@ function renderWelcome() {
     '<button type="button" class="role-card" data-role="freelancer"><span class="role-ico tile-green">' + searchIco + "</span>" +
     '<span><span class="role-title">فریلنسر</span><span class="role-sub">درخواست‌هایت را پیگیری کن و پروفایلت را کامل کن</span></span></button>' +
     '<div class="welcome-note">انتخابت را بعداً می‌توانی عوض کنی.</div>' +
-    '<button class="btn btn-ghost role-switch" id="welcome-back">بازگشت</button>' +
     "</div>";
   viewEl().querySelectorAll("[data-role]").forEach(function (el) {
     el.addEventListener("click", function () {
@@ -4799,18 +4798,9 @@ function renderWelcome() {
       }).catch(function () { openVerify(); });
     });
   });
-  const back = document.getElementById("welcome-back");
-  if (back) back.addEventListener("click", function () {
-    // v136: back from the role pick goes to the previous screen — the
-    // onboarding question when the user arrived by answering it (or
-    // has no role yet) — never forward into a gated tab. The old
-    // handler called switchTab(homeTab()): for a non-admin employer
-    // homeTab() is "post", and the post tab is gated on a verified
-    // YouTube channel, so pressing back without picking a role threw
-    // the user into the YouTube connect screen.
-    if (state.fromOnboarding || !getRole()) { state.view = { name: "onboarding" }; render(); return; }
-    switchTab(getRole() === "employer" ? "my-jobs" : homeTab());
-  });
+  // v145 (user order 2026-11-20): the «بازگشت» button under the role
+  // pick is gone — the user must pick a role to continue; the v136
+  // back handler is removed with it.
 }
 function showWelcome() {
   state.fromOnboarding = false; // v136: cleared on every entry; only the onboarding answer sets it
@@ -5082,7 +5072,9 @@ function bindBack(tab) {
    Top-level tab views show no BackButton, so the system back still
    closes the app from there (standard Telegram behaviour). */
 function tgBackTarget() {
-  return viewEl().querySelector("[data-back]") || document.getElementById("welcome-back");
+  // v145: the role pick has no back button anymore, so the Telegram
+  // BackButton hides there too (top-level behaviour).
+  return viewEl().querySelector("[data-back]");
 }
 function syncTgBackButton() {
   if (!tg || !tg.BackButton) return;
@@ -5273,7 +5265,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v144 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v145 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
