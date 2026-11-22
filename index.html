@@ -258,6 +258,7 @@
   .cam-oval { position: absolute; left: 50%; top: 50%; width: 62%; aspect-ratio: 3 / 4; transform: translate(-50%, -50%); border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0,0,0,0.45); pointer-events: none; }
   .cam-oval.ok { border-color: #22c55e; box-shadow: 0 0 0 9999px rgba(0,0,0,0.45), 0 0 18px rgba(34,197,94,0.9); }
   .cam-hint { text-align: center; font-size: 14px; margin: 10px 0 0; }
+  .cam-step-title { text-align: center; font-size: 17px; font-weight: 700; margin: 4px 0 2px; }
   .cam-shots { display: flex; gap: 8px; margin-top: 10px; }
   .cam-shots img { width: 72px; height: 96px; object-fit: cover; border-radius: 8px; border: 2px solid #22c55e; }
   .cam-shots .cam-shot-label { font-size: 12px; color: var(--hint); text-align: center; margin-top: 2px; }
@@ -591,7 +592,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v147</span>
+<span class="app-version" id="app-version">v148</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4363,7 +4364,7 @@ function renderVerify() {
     if (vs === "approved") camBody = "احراز هویتت تایید شد ✓";
     else if (vs === "pending") camBody = "عکس‌های احراز هویت دریافت شد ✓ — نتیجه بررسی احراز هویت شما ظرف ۲۴ ساعت آینده اعلام می‌شود.";
     else if (vs === "rejected") camBody = "احراز هویتت تایید نشد" + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.";
-    else camBody = "اول تمام‌رخ، بعد نیم‌رخ — صورتت رو داخل بیضی بذار و دکمه «گرفتن عکس» رو بزن.";
+    else camBody = "دو صفحه‌ی جدا — اول تمام‌رخ، بعد نیم‌رخ. تو هر صفحه صورتت رو داخل بیضی بذار و دکمه «گرفتن عکس» رو بزن.";
     html += verifyStepHtml(2, "احراز هویت با دوربین", camBody, videoDone);
   } else if (vs === "rejected") {
     // A retake still needs the reason on screen — one line, not a card.
@@ -4409,7 +4410,14 @@ function renderVerify() {
     else window.open("https://t.me/YThiringai", "_blank");
   });
   const camBtn = document.getElementById("verify-open-camera");
-  if (camBtn) camBtn.addEventListener("click", startCamera);
+  // v148: a fresh open starts from the front photo; a retry after a
+  // camera error re-opens for the current step — a failed profile
+  // open must not wipe the front photo.
+  if (camBtn) camBtn.addEventListener("click", state.cam ? openCameraForStep : startCamera);
+  const camBtn2 = document.getElementById("verify-open-camera-profile");
+  if (camBtn2) camBtn2.addEventListener("click", openCameraForStep);
+  const retakeFrontBtn = document.getElementById("verify-retake-front");
+  if (retakeFrontBtn) retakeFrontBtn.addEventListener("click", function () { stopCamera(); startCamera(); });
   const swBtn = document.getElementById("verify-switch-role");
   if (swBtn) swBtn.addEventListener("click", function () { showWelcome(); });
   const capBtn = document.getElementById("verify-capture");
@@ -4516,7 +4524,11 @@ function stopBotPolling() {
    nothing shoots without a tap. The oval + hint stay as framing
    guidance (green when the face fills the oval and holds steady),
    and the profile button stays disabled until the turn is detected
-   (needMotion), so the profile shot can't be a second front photo. */
+   (needMotion), so the profile shot can't be a second front photo.
+   v148 (user order 2026-11-22): the two photo steps are TWO
+   SEPARATE PAGES — the front photo is taken and finished on its own
+   page, and only then does the profile page open (with its own
+   camera, opened by its own button). Never both photos on one page. */
 function camHtml(cam) {
   if (cam.step === "done") {
     return '<div class="cam-shots">' +
@@ -4525,7 +4537,20 @@ function camHtml(cam) {
       '<button class="btn" type="button" id="verify-send-photos">ارسال احراز هویت</button>' +
       '<button class="btn" type="button" id="verify-retake">دوباره گرفتن عکس‌ها</button>';
   }
-  let h = '<div class="cam-frame"><video id="cam-video" autoplay playsinline muted></video><div class="cam-oval" id="cam-oval"></div></div>' +
+  // v148: the profile page — reached only after the front photo is
+  // done. The front camera is stopped by then; this page opens its
+  // own camera with its own button, so the two photos never share
+  // a page.
+  if (cam.step === "profile" && !cam.stream && !cam.opening) {
+    return '<h3 class="cam-step-title">مرحله ۲ از ۲ — عکس نیم‌رخ</h3>' +
+      '<p class="desc">تمام‌رخ ثبت شد ✓ — حالا نوبت نیم‌رخه. سرت رو آروم به چپ بچرخون، بعد دوربین رو باز کن و عکس رو بگیر.</p>' +
+      '<div class="cam-shots"><div><img src="' + cam.front + '" alt=""><div class="cam-shot-label">تمام‌رخ ✓</div></div></div>' +
+      '<button class="btn btn-center" type="button" id="verify-open-camera-profile">باز کردن دوربین</button>' +
+      '<button class="btn btn-ghost btn-center" type="button" id="verify-retake-front">عکس تمام‌رخ رو دوباره بگیر</button>';
+  }
+  const stepTitle = cam.step === "front" ? "مرحله ۱ از ۲ — عکس تمام‌رخ" : "مرحله ۲ از ۲ — عکس نیم‌رخ";
+  let h = '<h3 class="cam-step-title">' + stepTitle + '</h3>' +
+    '<div class="cam-frame"><video id="cam-video" autoplay playsinline muted></video><div class="cam-oval" id="cam-oval"></div></div>' +
     '<p class="cam-hint" id="cam-hint"></p>' +
     '<button class="btn btn-center" type="button" id="verify-capture">📷 گرفتن عکس</button>';
   if (cam.front) {
@@ -4534,7 +4559,21 @@ function camHtml(cam) {
   return h;
 }
 function startCamera() {
-  state.cam = { step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, faceAligned: false, autoDetect: false, error: null, alignedTicks: 0, longSteadyTicks: 0, needMotion: false, prevFrame: null, prevTime: 0, steadyCv: null, steadyCtx: null, autoHoldUntil: 0 };
+  state.cam = { step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, faceAligned: false, autoDetect: false, error: null, alignedTicks: 0, longSteadyTicks: 0, needMotion: false, prevFrame: null, prevTime: 0, steadyCv: null, steadyCtx: null, autoHoldUntil: 0, opening: false };
+  renderVerify();
+  startCameraStream();
+}
+// v148: re-open the camera for the CURRENT step without resetting
+// the photos — the profile page's own «باز کردن دوربین» button and
+// the camera-error retry both use this, so a failed profile open
+// never wipes the front photo. The turn gate arms here (needMotion)
+// because the profile page opens its camera fresh.
+function openCameraForStep() {
+  const cam = state.cam;
+  if (!cam || !cam.step || cam.step === "done") return;
+  cam.error = null;
+  cam.opening = true;
+  if (cam.step === "profile") { cam.needMotion = true; cam.autoHoldUntil = Date.now() + 2500; }
   renderVerify();
   startCameraStream();
 }
@@ -4543,6 +4582,7 @@ function startCameraStream() {
   if (!cam || !cam.step || cam.step === "done") return;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     cam.error = "camera";
+    cam.opening = false;
     renderVerify();
     return;
   }
@@ -4552,10 +4592,14 @@ function startCameraStream() {
       return;
     }
     cam.stream = stream;
-    attachCameraVideo();
+    cam.opening = false;
+    // v148: the profile page painted the camera frame while the
+    // stream was still opening — re-render so the live video
+    // attaches to the element that is actually on screen now.
+    renderVerify();
     setupFaceDetection();
   }).catch(function () {
-    if (state.cam && state.cam === cam) { cam.error = "camera"; renderVerify(); }
+    if (state.cam && state.cam === cam) { cam.error = "camera"; cam.opening = false; renderVerify(); }
   });
 }
 function attachCameraVideo() {
@@ -4749,12 +4793,12 @@ function capturePhoto(isAuto) {
   const url = c.toDataURL("image/jpeg", 0.82);
   if (cam.step === "front") {
     cam.front = url; cam.step = "profile";
-    // v140: the profile step is a separate step — give the user
-    // 2.5s to turn, and don't arm the capture until the frame has
-    // actually moved (needMotion), so the profile shot can't be a
-    // second front photo taken while still facing forward.
-    cam.autoHoldUntil = Date.now() + 2500;
-    cam.needMotion = true;
+    // v148: the profile step is a SEPARATE PAGE — stop the camera
+    // here; the profile page opens its own camera (openCameraForStep),
+    // which arms the turn gate (needMotion) then, so the profile
+    // shot can't be a second front photo taken while still facing
+    // forward.
+    stopCameraStream();
   }
   else if (cam.step === "profile") { cam.profile = url; cam.step = "done"; stopCameraStream(); }
   cam.aligned = false;
@@ -4770,6 +4814,7 @@ function stopCameraStream() {
   if (cam.timer) { clearInterval(cam.timer); cam.timer = null; }
   if (cam.stream) { cam.stream.getTracks().forEach(function (t) { t.stop(); }); cam.stream = null; }
   cam.detector = null;
+  cam.opening = false;
 }
 function stopCamera() {
   stopCameraStream();
@@ -5314,7 +5359,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v147 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v148 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
