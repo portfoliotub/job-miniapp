@@ -638,7 +638,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v150</span>
+<span class="app-version" id="app-version">v151</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4441,9 +4441,12 @@ function renderVerify() {
     ensureWizardCam();
     const w = state.cam;
     if (w.error === "camera") {
-      html += '<p class="desc">دوربین باز نشد — دسترسی به دوربین رو بده و دوباره امتحان کن، یا ویدیو رو توی چت ربات بفرست.</p>' +
-        '<button class="btn btn-center" type="button" id="verify-open-camera">تلاش دوباره برای دوربین</button>' +
-        '<button class="btn" type="button" id="verify-open-bot-video">فرستادن ویدیو توی چت ربات</button>';
+      // v151 (user order 2026-11-22): when the camera was denied,
+      // the denied screen offers ONLY the retry — the «فرستادن ویدیو
+      // توی چت ربات» fallback is gone from this screen, and the error
+      // text no longer mentions it.
+      html += '<p class="desc">دوربین باز نشد — دسترسی به دوربین رو بده و دوباره امتحان کن.</p>' +
+        '<button class="btn btn-center" type="button" id="verify-open-camera">تلاش دوباره برای دوربین</button>';
     } else {
       html += wizardHtml(w);
     }
@@ -5521,7 +5524,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v150 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v151 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
