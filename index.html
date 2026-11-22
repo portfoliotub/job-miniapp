@@ -271,10 +271,10 @@
      blue header with back/close, progress dots, white cards with
      line-art icons, pill buttons, dark square camera preview with
      a green frame, and a big circular camera button. */
-  .wiz-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 0; }
+  /* v152 (user order 2026-11-22): the header is just the title now —
+     the back arrow and the ✕ are gone from every wizard step. */
+  .wiz-header { display: flex; align-items: center; justify-content: center; padding: 4px 2px 0; }
   .wiz-header h2 { margin: 0; font-size: 20px; }
-  .wiz-nav-btn { background: none; border: none; color: #4a90d9; font-size: 26px; line-height: 1; cursor: pointer; padding: 4px 10px; }
-  .wiz-nav-spacer { width: 46px; }
   .wiz-progress { text-align: center; color: var(--hint); font-size: 14px; margin: 10px 0 0; }
   .wiz-dots { display: flex; gap: 8px; justify-content: center; margin: 8px 0 8px; }
   .wiz-dot { width: 10px; height: 10px; border-radius: 50%; background: #d7dee8; }
@@ -638,7 +638,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v151</span>
+<span class="app-version" id="app-version">v152</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4472,10 +4472,6 @@ function renderVerify() {
   if (startBtn) startBtn.addEventListener("click", startFrontCamera);
   const contBtn = document.getElementById("verify-wizard-continue");
   if (contBtn) contBtn.addEventListener("click", function () { if (state.cam) { state.cam.wizard = 4; openCameraForStep(); } });
-  const backBtn = document.getElementById("verify-wizard-back");
-  if (backBtn) backBtn.addEventListener("click", wizardBack);
-  const closeBtn = document.getElementById("verify-wizard-close");
-  if (closeBtn) closeBtn.addEventListener("click", wizardClose);
   const doneBtn = document.getElementById("verify-wizard-done");
   if (doneBtn) doneBtn.addEventListener("click", wizardDone);
   const camBtn = document.getElementById("verify-open-camera");
@@ -4643,10 +4639,9 @@ function wizDoneCard(label, svg) {
 function wizardHtml(w) {
   const step = w.wizard || 1;
   const labels = ["مرحله ۱ از ۵", "مرحله ۲ از ۵", "مرحله ۳ از ۵", "مرحله ۴ از ۵", "مرحله ۵ از ۵"];
-  let h = '<div class="wiz-header">' +
-    (step === 1 ? '<span class="wiz-nav-spacer"></span>' : '<button class="wiz-nav-btn" type="button" id="verify-wizard-back">←</button>') +
-    '<h2>احراز هویت</h2>' +
-    '<button class="wiz-nav-btn" type="button" id="verify-wizard-close">✕</button></div>' +
+  // v152 (user order 2026-11-22): no back arrow, no ✕ — the header
+  // is only the title on every step.
+  let h = '<div class="wiz-header"><h2>احراز هویت</h2></div>' +
     '<div class="wiz-progress" id="wiz-step-label">' + labels[step - 1] + '</div>' +
     '<div class="wiz-dots">' + [1, 2, 3, 4, 5].map(function (i) { return '<span class="wiz-dot' + (i <= step ? ' on' : '') + '"></span>'; }).join('') + '</div>';
   if (step === 1) {
@@ -4694,18 +4689,6 @@ function startFrontCamera() {
   cam.wizard = 2;
   renderVerify();
   startCameraStream();
-}
-function wizardBack() {
-  const cam = state.cam;
-  if (!cam) return;
-  if (cam.wizard === 2) { stopCameraStream(); cam.wizard = 1; renderVerify(); }
-  else if (cam.wizard === 3) { cam.wizard = 2; renderVerify(); startCameraStream(); }
-  else if (cam.wizard === 4) { stopCameraStream(); cam.wizard = 3; renderVerify(); }
-  else if (cam.wizard === 5) { wizardDone(); }
-}
-function wizardClose() {
-  if (window.Telegram && Telegram.WebApp && Telegram.WebApp.close) Telegram.WebApp.close();
-  else showWelcome();
 }
 function wizardDone() {
   stopCamera();
@@ -5524,7 +5507,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v151 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v152 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
