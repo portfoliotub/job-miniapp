@@ -48,6 +48,10 @@
      showed above the composer with no photo chosen. A hidden element stays hidden. */
   [hidden] { display: none !important; }
   main { padding: 0 0 86px; max-width: 640px; margin: 0 auto; }
+  /* v150 (user order 2026-11-22): when the tab bar is hidden the
+     main content must not keep its 86px bottom clearance — that dead
+     space alone pushed every wizard screen below the fold. */
+  main.no-tabs { padding-bottom: 16px; }
   h2 { font-size: 13px; font-weight: 600; color: var(--hint); margin: 0; padding: 16px 16px 6px; }
   .muted { color: var(--hint); font-size: 13px; }
   /* Telegram chat-list row */
@@ -272,29 +276,37 @@
   .wiz-nav-btn { background: none; border: none; color: #4a90d9; font-size: 26px; line-height: 1; cursor: pointer; padding: 4px 10px; }
   .wiz-nav-spacer { width: 46px; }
   .wiz-progress { text-align: center; color: var(--hint); font-size: 14px; margin: 10px 0 0; }
-  .wiz-dots { display: flex; gap: 8px; justify-content: center; margin: 8px 0 20px; }
+  .wiz-dots { display: flex; gap: 8px; justify-content: center; margin: 8px 0 8px; }
   .wiz-dot { width: 10px; height: 10px; border-radius: 50%; background: #d7dee8; }
   .wiz-dot.on { background: #4a90d9; }
-  .wiz-title { text-align: center; font-size: 24px; font-weight: 800; margin: 8px 0 18px; }
+  .wiz-title { text-align: center; font-size: 24px; font-weight: 800; margin: 4px 0 10px; }
   .wiz-hero { display: flex; justify-content: center; margin: 6px 0 10px; }
-  .wiz-card { background: #fff; border-radius: 20px; box-shadow: 0 2px 10px rgba(16,42,67,.07); padding: 16px; display: flex; align-items: center; gap: 12px; margin: 0 4px 14px; }
-  .wiz-card-ico { width: 64px; height: 64px; border-radius: 14px; background: #e8f1fb; display: flex; align-items: center; justify-content: center; flex: none; }
-  .wiz-card-ico svg { width: 52px; height: 52px; }
+  /* v150 (user order 2026-11-22): every wizard screen must fit on
+     ONE phone screen with no scrolling — the hero shrinks with the
+     viewport instead of pushing the cards and the button below the
+     fold. */
+  .wiz-hero svg { width: min(120px, 16vh); height: min(120px, 16vh); }
+  .wiz-card { background: #fff; border-radius: 20px; box-shadow: 0 2px 10px rgba(16,42,67,.07); padding: 12px 16px; display: flex; align-items: center; gap: 12px; margin: 0 4px 10px; }
+  .wiz-card-ico { width: 56px; height: 56px; border-radius: 14px; background: #e8f1fb; display: flex; align-items: center; justify-content: center; flex: none; }
+  .wiz-card-ico svg { width: 44px; height: 44px; }
   .wiz-card-txt { flex: 1; font-size: 17px; font-weight: 700; text-align: center; }
   .wiz-card-ico-wrap { position: relative; flex: none; }
   .wiz-check { position: absolute; bottom: -5px; left: -5px; width: 26px; height: 26px; border-radius: 50%; background: #22c55e; color: #fff; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; }
-  .wiz-btn { display: block; width: calc(100% - 8px); margin: 22px 4px 0; padding: 16px; font: inherit; font-size: 18px; font-weight: 700; text-align: center; color: #fff; background: #4a90d9; border: none; border-radius: 999px; cursor: pointer; }
+  .wiz-btn { display: block; width: calc(100% - 8px); margin: 16px 4px 0; padding: 14px; font: inherit; font-size: 18px; font-weight: 700; text-align: center; color: #fff; background: #4a90d9; border: none; border-radius: 999px; cursor: pointer; }
   .wiz-btn:active { opacity: .85; transform: scale(.98); }
   .wiz-btn-ghost { display: block; width: calc(100% - 8px); margin: 12px 4px 0; padding: 12px; font: inherit; font-size: 15px; font-weight: 600; text-align: center; color: var(--link); background: transparent; border: none; cursor: pointer; }
-  .wiz-cam-frame { position: relative; width: 100%; aspect-ratio: 1 / 1; background: #141b26; border-radius: 28px; overflow: hidden; }
+  /* v150: the camera frame shrinks on short phones so the header,
+     title, hint and camera button still fit on the same screen. */
+  .wiz-cam-frame { position: relative; width: min(100%, calc(100vh - 330px)); margin: 0 auto; aspect-ratio: 1 / 1; background: #141b26; border-radius: 28px; overflow: hidden; }
   .wiz-cam-frame video { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); }
   #cam-profile-outline { position: absolute; left: 50%; top: 50%; width: 62%; aspect-ratio: 3 / 4; transform: translate(-50%, -50%); pointer-events: none; color: #fff; }
   #cam-profile-outline.ok { color: #22c55e; filter: drop-shadow(0 0 10px rgba(34,197,94,.9)); }
   #cam-profile-outline svg { width: 100%; height: 100%; display: block; }
-  .wiz-cam-btn { width: 84px; height: 84px; border-radius: 50%; border: 3px solid #4a90d9; background: #fff; display: flex; align-items: center; justify-content: center; margin: 24px auto 0; cursor: pointer; box-shadow: 0 0 0 6px rgba(74,144,217,.15); }
+  .wiz-cam-btn { width: 84px; height: 84px; border-radius: 50%; border: 3px solid #4a90d9; background: #fff; display: flex; align-items: center; justify-content: center; margin: 18px auto 0; cursor: pointer; box-shadow: 0 0 0 6px rgba(74,144,217,.15); }
   .wiz-cam-btn:disabled { opacity: .45; }
   .wiz-cam-btn svg { width: 38px; height: 38px; }
-  .wiz-seal { display: flex; justify-content: center; margin: 18px 0 6px; }
+  .wiz-seal { display: flex; justify-content: center; margin: 12px 0 6px; }
+  .wiz-seal svg { width: min(110px, 16vh); height: min(110px, 16vh); }
   .wiz-note { text-align: center; color: var(--hint); font-size: 14px; margin: 4px 0 0; }
   /* v129 (user order 2026-11-17): professional verify screen — a hero
      with a shield icon plus a "why verification is mandatory" block.
@@ -626,7 +638,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v149</span>
+<span class="app-version" id="app-version">v150</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4393,7 +4405,13 @@ function renderVerify() {
   // button (it led to the role cards, an escape around the gate),
   // no tab bar (render() already hides it on the verify view).
   const _locked = getRole() === "freelancer" && !isVerified(v);
-  let html = (_locked ? "" : '<button class="back" data-back>› بازگشت</button>') + verifyHeroHtml();
+  // v150 (user order 2026-11-22): the wizard must fit on ONE phone
+  // screen with no scrolling — the verify hero (shield + «تایید
+  // هویت») is NOT rendered in the wizard state; the wizard carries
+  // its own header and hero, and the duplicate block pushed the
+  // cards and the «شروع» button below the fold.
+  const inWizard = camActionable || showWizardSent;
+  let html = (_locked ? "" : '<button class="back" data-back>› بازگشت</button>') + (inWizard ? "" : verifyHeroHtml());
   if (!camActionable && !showWizardSent) {
     if (showWhy) html += verifyWhyHtml();
     html += '<p class="desc">برای اینکه کارفرماها بهت اعتماد کنن و بتونی درخواست بفرستی، دو مرحله رو کامل کن. شماره تلفنت رو هیچ‌کس نمی‌بینه — فقط «تایید شده ✓» نشون داده می‌شه.</p>';
@@ -5368,6 +5386,10 @@ function render() {
   // neither does the chat page (it has its own back button + fixed
   // composer).
   document.getElementById("tabs").style.display = (state.view.name === "welcome" || state.view.name === "onboarding" || state.view.name === "yt-connect" || state.view.name === "verify" || state.view.name === "start-bot" || state.view.name === "chat" || state.view.name === "freelancer-profile") ? "none" : "";
+  // v150 (user order 2026-11-22): when the tab bar is hidden, drop
+  // the 86px bottom clearance on <main> — that dead space alone
+  // pushed every wizard screen below the fold and made it scroll.
+  document.querySelector("main").classList.toggle("no-tabs", document.getElementById("tabs").style.display === "none");
   renderTabs();
   switch (state.view.name) {
     case "onboarding": renderOnboarding(); break;
@@ -5499,7 +5521,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v149 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v150 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
