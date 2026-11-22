@@ -262,6 +262,40 @@
   .cam-shots { display: flex; gap: 8px; margin-top: 10px; }
   .cam-shots img { width: 72px; height: 96px; object-fit: cover; border-radius: 8px; border: 2px solid #22c55e; }
   .cam-shots .cam-shot-label { font-size: 12px; color: var(--hint); text-align: center; margin-top: 2px; }
+  /* v149 (user order 2026-11-22): the verification flow is a 5-step
+     wizard built from the user's screenshots — light background,
+     blue header with back/close, progress dots, white cards with
+     line-art icons, pill buttons, dark square camera preview with
+     a green frame, and a big circular camera button. */
+  .wiz-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 0; }
+  .wiz-header h2 { margin: 0; font-size: 20px; }
+  .wiz-nav-btn { background: none; border: none; color: #4a90d9; font-size: 26px; line-height: 1; cursor: pointer; padding: 4px 10px; }
+  .wiz-nav-spacer { width: 46px; }
+  .wiz-progress { text-align: center; color: var(--hint); font-size: 14px; margin: 10px 0 0; }
+  .wiz-dots { display: flex; gap: 8px; justify-content: center; margin: 8px 0 20px; }
+  .wiz-dot { width: 10px; height: 10px; border-radius: 50%; background: #d7dee8; }
+  .wiz-dot.on { background: #4a90d9; }
+  .wiz-title { text-align: center; font-size: 24px; font-weight: 800; margin: 8px 0 18px; }
+  .wiz-hero { display: flex; justify-content: center; margin: 6px 0 10px; }
+  .wiz-card { background: #fff; border-radius: 20px; box-shadow: 0 2px 10px rgba(16,42,67,.07); padding: 16px; display: flex; align-items: center; gap: 12px; margin: 0 4px 14px; }
+  .wiz-card-ico { width: 64px; height: 64px; border-radius: 14px; background: #e8f1fb; display: flex; align-items: center; justify-content: center; flex: none; }
+  .wiz-card-ico svg { width: 52px; height: 52px; }
+  .wiz-card-txt { flex: 1; font-size: 17px; font-weight: 700; text-align: center; }
+  .wiz-card-ico-wrap { position: relative; flex: none; }
+  .wiz-check { position: absolute; bottom: -5px; left: -5px; width: 26px; height: 26px; border-radius: 50%; background: #22c55e; color: #fff; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; }
+  .wiz-btn { display: block; width: calc(100% - 8px); margin: 22px 4px 0; padding: 16px; font: inherit; font-size: 18px; font-weight: 700; text-align: center; color: #fff; background: #4a90d9; border: none; border-radius: 999px; cursor: pointer; }
+  .wiz-btn:active { opacity: .85; transform: scale(.98); }
+  .wiz-btn-ghost { display: block; width: calc(100% - 8px); margin: 12px 4px 0; padding: 12px; font: inherit; font-size: 15px; font-weight: 600; text-align: center; color: var(--link); background: transparent; border: none; cursor: pointer; }
+  .wiz-cam-frame { position: relative; width: 100%; aspect-ratio: 1 / 1; background: #141b26; border-radius: 28px; overflow: hidden; }
+  .wiz-cam-frame video { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); }
+  #cam-profile-outline { position: absolute; left: 50%; top: 50%; width: 62%; aspect-ratio: 3 / 4; transform: translate(-50%, -50%); pointer-events: none; color: #fff; }
+  #cam-profile-outline.ok { color: #22c55e; filter: drop-shadow(0 0 10px rgba(34,197,94,.9)); }
+  #cam-profile-outline svg { width: 100%; height: 100%; display: block; }
+  .wiz-cam-btn { width: 84px; height: 84px; border-radius: 50%; border: 3px solid #4a90d9; background: #fff; display: flex; align-items: center; justify-content: center; margin: 24px auto 0; cursor: pointer; box-shadow: 0 0 0 6px rgba(74,144,217,.15); }
+  .wiz-cam-btn:disabled { opacity: .45; }
+  .wiz-cam-btn svg { width: 38px; height: 38px; }
+  .wiz-seal { display: flex; justify-content: center; margin: 18px 0 6px; }
+  .wiz-note { text-align: center; color: var(--hint); font-size: 14px; margin: 4px 0 0; }
   /* v129 (user order 2026-11-17): professional verify screen — a hero
      with a shield icon plus a "why verification is mandatory" block.
      The why block is deliberately NOT a .card and has no .step-num:
@@ -592,7 +626,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v148</span>
+<span class="app-version" id="app-version">v149</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4336,10 +4370,19 @@ function renderVerify() {
   const phoneDone = !!(v && v.phone_verified);
   const vs = v ? v.video_status : "none";
   const videoDone = vs === "approved";
-  // v125 (user order 2026-11-17): when the camera is the next step, the
-  // two step cards sit above it and push it below the fold — the user
-  // has to scroll to reach the camera. So in the camera state the
-  // screen goes straight to the camera: no intro, no step cards.
+  // v149: after the photos auto-send, the sent screen (wizard step
+  // 5) stays up even once the server confirms pending — the poll
+  // re-renders here, not to the old pending card.
+  const showWizardSent = !!(state.cam && state.cam.wizard === 5 && vs === "pending");
+  // v149: the sent screen (step 5) is only valid while the submission
+  // is pending — if the server state says the flow never sent (none)
+  // or was rejected, the wizard restarts from the intro so the user
+  // can take the photos again instead of staring at a stale "sent"
+  // screen with no way to retake.
+  if (state.cam && state.cam.wizard === 5 && vs !== "pending") state.cam = null;
+  // v149 (user order 2026-11-22): the camera state is the 5-step
+  // wizard — the intro screen lists the two photos and starts the
+  // flow; the old step cards sit only on the phone state now.
   const camActionable = phoneDone && vs !== "pending" && vs !== "approved";
   // v129: the why block shows while the identity is still open (not
   // pending, not approved) — in the phone state and in the camera
@@ -4351,7 +4394,7 @@ function renderVerify() {
   // no tab bar (render() already hides it on the verify view).
   const _locked = getRole() === "freelancer" && !isVerified(v);
   let html = (_locked ? "" : '<button class="back" data-back>› بازگشت</button>') + verifyHeroHtml();
-  if (!camActionable) {
+  if (!camActionable && !showWizardSent) {
     if (showWhy) html += verifyWhyHtml();
     html += '<p class="desc">برای اینکه کارفرماها بهت اعتماد کنن و بتونی درخواست بفرستی، دو مرحله رو کامل کن. شماره تلفنت رو هیچ‌کس نمی‌بینه — فقط «تایید شده ✓» نشون داده می‌شه.</p>';
     html += verifyStepHtml(1, "شماره تلفن", phoneDone
@@ -4364,33 +4407,28 @@ function renderVerify() {
     if (vs === "approved") camBody = "احراز هویتت تایید شد ✓";
     else if (vs === "pending") camBody = "عکس‌های احراز هویت دریافت شد ✓ — نتیجه بررسی احراز هویت شما ظرف ۲۴ ساعت آینده اعلام می‌شود.";
     else if (vs === "rejected") camBody = "احراز هویتت تایید نشد" + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.";
-    else camBody = "دو صفحه‌ی جدا — اول تمام‌رخ، بعد نیم‌رخ. تو هر صفحه صورتت رو داخل بیضی بذار و دکمه «گرفتن عکس» رو بزن.";
+    else camBody = "۵ مرحله — معرفی، عکس تمام‌رخ، راهنمای نیم‌رخ، عکس نیم‌رخ و ارسال.";
     html += verifyStepHtml(2, "احراز هویت با دوربین", camBody, videoDone);
   } else if (vs === "rejected") {
     // A retake still needs the reason on screen — one line, not a card.
     html += '<p class="desc">احراز هویتت تایید نشد' + (v && v.review_note ? " — " + esc(v.review_note) : "") + " دوباره با دوربین بگیر.</p>";
   }
-  // v129: the why block in the camera state — only while the camera
-  // is not open, so the camera frame and capture stay full-screen.
-  if (camActionable && showWhy && !(state.cam && state.cam.step)) html += verifyWhyHtml();
+  // v149 (user order 2026-11-22): the camera flow is a 5-step wizard
+  // (intro, front photo, profile guide, profile photo, sent) built
+  // from the user's screenshots — the why block no longer shows in
+  // the camera state; the wizard's own intro carries the flow. The
+  // «تغییر نقش» escape (v141) lives on the wizard's intro screen.
   const cam = state.cam;
-  if (camActionable) {
-    if (cam && cam.error === "camera") {
+  if (camActionable || showWizardSent) {
+    ensureWizardCam();
+    const w = state.cam;
+    if (w.error === "camera") {
       html += '<p class="desc">دوربین باز نشد — دسترسی به دوربین رو بده و دوباره امتحان کن، یا ویدیو رو توی چت ربات بفرست.</p>' +
         '<button class="btn btn-center" type="button" id="verify-open-camera">تلاش دوباره برای دوربین</button>' +
         '<button class="btn" type="button" id="verify-open-bot-video">فرستادن ویدیو توی چت ربات</button>';
-    } else if (cam && cam.step) {
-      html += camHtml(cam);
     } else {
-      html += '<button class="btn btn-center" type="button" id="verify-open-camera">باز کردن دوربین</button>';
+      html += wizardHtml(w);
     }
-    // v141 (user order 2026-11-19): a «تغییر نقش» option below the
-    // camera button — an unverified freelancer who picked the wrong
-    // role was stuck on this screen with no way out (no back button
-    // since v132). Switching roles goes to the role pick; picking
-    // freelancer again lands back on verify, picking employer goes
-    // to the YouTube gate. Never shown while the camera is open.
-    if (!(cam && cam.step)) html += '<button class="btn btn-ghost btn-center" type="button" id="verify-switch-role">تغییر نقش</button>';
   }
   if (isVerified(v)) {
     html += '<div class="card"><span class="muted">هویتت تایید شد ✓ — حالا می‌تونی برای آگهی‌ها درخواست بفرستی.</span></div>';
@@ -4409,23 +4447,26 @@ function renderVerify() {
     if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) Telegram.WebApp.openTelegramLink("https://t.me/YThiringai");
     else window.open("https://t.me/YThiringai", "_blank");
   });
+  const startBtn = document.getElementById("verify-wizard-start");
+  if (startBtn) startBtn.addEventListener("click", startFrontCamera);
+  const contBtn = document.getElementById("verify-wizard-continue");
+  if (contBtn) contBtn.addEventListener("click", function () { if (state.cam) { state.cam.wizard = 4; openCameraForStep(); } });
+  const backBtn = document.getElementById("verify-wizard-back");
+  if (backBtn) backBtn.addEventListener("click", wizardBack);
+  const closeBtn = document.getElementById("verify-wizard-close");
+  if (closeBtn) closeBtn.addEventListener("click", wizardClose);
+  const doneBtn = document.getElementById("verify-wizard-done");
+  if (doneBtn) doneBtn.addEventListener("click", wizardDone);
   const camBtn = document.getElementById("verify-open-camera");
-  // v148: a fresh open starts from the front photo; a retry after a
-  // camera error re-opens for the current step — a failed profile
-  // open must not wipe the front photo.
-  if (camBtn) camBtn.addEventListener("click", state.cam ? openCameraForStep : startCamera);
-  const camBtn2 = document.getElementById("verify-open-camera-profile");
-  if (camBtn2) camBtn2.addEventListener("click", openCameraForStep);
-  const retakeFrontBtn = document.getElementById("verify-retake-front");
-  if (retakeFrontBtn) retakeFrontBtn.addEventListener("click", function () { stopCamera(); startCamera(); });
+  // v148: a failed open must not wipe the photos already taken —
+  // the retry re-opens the camera for the current step.
+  if (camBtn) camBtn.addEventListener("click", openCameraForStep);
   const swBtn = document.getElementById("verify-switch-role");
   if (swBtn) swBtn.addEventListener("click", function () { showWelcome(); });
   const capBtn = document.getElementById("verify-capture");
   if (capBtn) capBtn.addEventListener("click", function () { if (state.cam && !state.cam.needMotion) capturePhoto(false); });
   const sendBtn = document.getElementById("verify-send-photos");
   if (sendBtn) sendBtn.addEventListener("click", sendVerificationPhotos);
-  const retakeBtn = document.getElementById("verify-retake");
-  if (retakeBtn) retakeBtn.addEventListener("click", function () { stopCamera(); startCamera(); });
   // A re-render recreates the <video> element — re-attach a live stream.
   if (cam && cam.stream && cam.step && cam.step !== "done") attachCameraVideo();
   if (cam && cam.step && cam.step !== "done") updateCamUi();
@@ -4529,45 +4570,131 @@ function stopBotPolling() {
    SEPARATE PAGES — the front photo is taken and finished on its own
    page, and only then does the profile page open (with its own
    camera, opened by its own button). Never both photos on one page. */
-function camHtml(cam) {
-  if (cam.step === "done") {
-    return '<div class="cam-shots">' +
-      '<div><img src="' + cam.front + '" alt=""><div class="cam-shot-label">تمام‌رخ</div></div>' +
-      '<div><img src="' + cam.profile + '" alt=""><div class="cam-shot-label">نیم‌رخ</div></div></div>' +
-      '<button class="btn" type="button" id="verify-send-photos">ارسال احراز هویت</button>' +
-      '<button class="btn" type="button" id="verify-retake">دوباره گرفتن عکس‌ها</button>';
-  }
-  // v148: the profile page — reached only after the front photo is
-  // done. The front camera is stopped by then; this page opens its
-  // own camera with its own button, so the two photos never share
-  // a page.
-  if (cam.step === "profile" && !cam.stream && !cam.opening) {
-    return '<h3 class="cam-step-title">مرحله ۲ از ۲ — عکس نیم‌رخ</h3>' +
-      '<p class="desc">تمام‌رخ ثبت شد ✓ — حالا نوبت نیم‌رخه. سرت رو آروم به چپ بچرخون، بعد دوربین رو باز کن و عکس رو بگیر.</p>' +
-      '<div class="cam-shots"><div><img src="' + cam.front + '" alt=""><div class="cam-shot-label">تمام‌رخ ✓</div></div></div>' +
-      '<button class="btn btn-center" type="button" id="verify-open-camera-profile">باز کردن دوربین</button>' +
-      '<button class="btn btn-ghost btn-center" type="button" id="verify-retake-front">عکس تمام‌رخ رو دوباره بگیر</button>';
-  }
-  const stepTitle = cam.step === "front" ? "مرحله ۱ از ۲ — عکس تمام‌رخ" : "مرحله ۲ از ۲ — عکس نیم‌رخ";
-  let h = '<h3 class="cam-step-title">' + stepTitle + '</h3>' +
-    '<div class="cam-frame"><video id="cam-video" autoplay playsinline muted></video><div class="cam-oval" id="cam-oval"></div></div>' +
-    '<p class="cam-hint" id="cam-hint"></p>' +
-    '<button class="btn btn-center" type="button" id="verify-capture">📷 گرفتن عکس</button>';
-  if (cam.front) {
-    h += '<div class="cam-shots"><div><img src="' + cam.front + '" alt=""><div class="cam-shot-label">تمام‌رخ ✓</div></div></div>';
+/* v149 (user order 2026-11-22): the verification flow is a 5-step
+   wizard built from the user's screenshots — intro (1/5), front
+   photo (2/5), profile guide (3/5), profile photo (4/5), sent
+   (5/5). The two photos stay on separate pages with their own
+   cameras (v148), capture stays manual (v147), and the profile
+   photo auto-sends — there is no send button any more. The header
+   has a back arrow (previous step; hidden on step 1, where there
+   is no previous step and the gate forbids leaving verification)
+   and an X that closes the Mini App. The icons are blue line-art
+   drawn to match the screenshots. */
+function wizFaceFrontInner() {
+  return '<circle cx="32" cy="25" r="14"/><path d="M25 23h.01M39 23h.01"/><path d="M27 31q5 4 10 0"/><path d="M14 54c2-9 9-13 18-13s16 4 18 13"/>';
+}
+function wizFaceFrontSvg() {
+  return '<svg viewBox="0 0 64 64" fill="none" stroke="#2f7fc4" stroke-width="2.5" stroke-linecap="round">' + wizFaceFrontInner() + '</svg>';
+}
+function wizFaceProfileInner() {
+  return '<path d="M30 8c12 0 20 8 20 19 0 4 2 6 4 8 2 2 1 5-2 6 1 2-1 4-4 4-1 3-4 6-8 7-8 2-16-3-18-12C16 28 18 8 30 8z"/><circle cx="40" cy="27" r="1.6" fill="#2f7fc4" stroke="none"/><path d="M32 28c3 1 3 6 0 7"/>';
+}
+function wizFaceProfileSvg() {
+  return '<svg viewBox="0 0 64 64" fill="none" stroke="#2f7fc4" stroke-width="2.5" stroke-linecap="round">' + wizFaceProfileInner() + '</svg>';
+}
+function wizShieldSvg() {
+  return '<svg viewBox="0 0 120 120" fill="none" stroke-linecap="round"><path d="M60 6l40 14v36c0 26-17 46-40 54C37 102 20 82 20 56V20z" fill="#e8f1fb" stroke="#2f7fc4" stroke-width="3"/><path d="M50 28H44v6M70 28h6v6M50 72H44v-6M70 72h6v-6" stroke="#2f7fc4" stroke-width="3"/><circle cx="60" cy="50" r="15" stroke="#2f7fc4" stroke-width="3"/><path d="M42 82c3-9 9-13 18-13s15 4 18 13" stroke="#2f7fc4" stroke-width="3"/><path d="M40 50h40" stroke="#4a90d9" stroke-width="3"/><circle cx="60" cy="50" r="6" fill="#4a90d9" stroke="none"/></svg>';
+}
+function wizTurnHeadSvg() {
+  return '<svg viewBox="0 0 64 64" fill="none" stroke="#2f7fc4" stroke-width="2.5" stroke-linecap="round"><g transform="translate(6,2) scale(0.8)">' + wizFaceFrontInner() + '</g><path d="M14 46Q32 60 50 46" stroke="#4a90d9"/><path d="M50 42l3 4-7 1z" fill="#4a90d9" stroke="none"/></svg>';
+}
+function wizEarSvg() {
+  return '<svg viewBox="0 0 64 64" fill="none" stroke="#2f7fc4" stroke-width="2.5" stroke-linecap="round">' + wizFaceProfileInner() + '<circle cx="33" cy="30" r="5" stroke="#4a90d9"/></svg>';
+}
+function wizTurnSvg() {
+  return '<svg viewBox="0 0 140 140" fill="none" stroke-linecap="round"><circle cx="70" cy="62" r="56" stroke="#bcd8f0" stroke-width="3"/><g transform="translate(26,34) scale(0.6)" stroke="#2f7fc4" stroke-width="2.5">' + wizFaceFrontInner() + '</g><g transform="translate(62,34) scale(0.6)" stroke="#2f7fc4" stroke-width="2.5">' + wizFaceProfileInner() + '</g><path d="M42 106a30 30 0 0 0 56 0" stroke="#4a90d9" stroke-width="3"/><path d="M98 100l3 8-8-2z" fill="#4a90d9" stroke="none"/></svg>';
+}
+function wizSealSvg() {
+  return '<svg viewBox="0 0 120 120" fill="none"><circle cx="60" cy="60" r="46" fill="#d9f2e3" stroke="#22c55e" stroke-width="3"/><circle cx="60" cy="60" r="36" stroke="#22c55e" stroke-width="2" opacity="0.45"/><path d="M44 61l11 11 21-24" stroke="#22c55e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+function wizCameraSvg() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="#4a90d9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
+}
+function wizProfileOutlineSvg() {
+  return '<svg viewBox="0 0 100 130" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M40 122C30 100 22 78 24 54 26 28 36 8 54 8c18 0 30 14 32 34 0 6 2 10 6 14 3 4 1 8-3 9 2 3 0 6-4 7 2 4-1 7-6 8-7 4-13 8-15 16-1 8-2 16-2 26"/><path d="M56 50c6 0 8 8 2 10"/></svg>';
+}
+function wizCard(label, svg) {
+  return '<div class="wiz-card"><div class="wiz-card-ico">' + svg + '</div><div class="wiz-card-txt">' + label + '</div></div>';
+}
+function wizDoneCard(label, svg) {
+  return '<div class="wiz-card"><div class="wiz-card-ico-wrap"><div class="wiz-card-ico">' + svg + '</div><span class="wiz-check">✓</span></div><div class="wiz-card-txt">' + label + '</div></div>';
+}
+function wizardHtml(w) {
+  const step = w.wizard || 1;
+  const labels = ["مرحله ۱ از ۵", "مرحله ۲ از ۵", "مرحله ۳ از ۵", "مرحله ۴ از ۵", "مرحله ۵ از ۵"];
+  let h = '<div class="wiz-header">' +
+    (step === 1 ? '<span class="wiz-nav-spacer"></span>' : '<button class="wiz-nav-btn" type="button" id="verify-wizard-back">←</button>') +
+    '<h2>احراز هویت</h2>' +
+    '<button class="wiz-nav-btn" type="button" id="verify-wizard-close">✕</button></div>' +
+    '<div class="wiz-progress" id="wiz-step-label">' + labels[step - 1] + '</div>' +
+    '<div class="wiz-dots">' + [1, 2, 3, 4, 5].map(function (i) { return '<span class="wiz-dot' + (i <= step ? ' on' : '') + '"></span>'; }).join('') + '</div>';
+  if (step === 1) {
+    h += '<div class="wiz-hero">' + wizShieldSvg() + '</div>' +
+      '<div class="wiz-title">مراحل احراز هویت</div>' +
+      wizCard('۱. عکس تمام‌رخ', wizFaceFrontSvg()) +
+      wizCard('۲. عکس نیم‌رخ', wizFaceProfileSvg()) +
+      '<button class="wiz-btn" type="button" id="verify-wizard-start">شروع</button>' +
+      '<button class="wiz-btn-ghost" type="button" id="verify-switch-role">تغییر نقش</button>';
+  } else if (step === 2) {
+    h += '<div class="wiz-title">عکس تمام‌رخ</div>' +
+      '<div class="wiz-cam-frame"><video id="cam-video" autoplay playsinline muted></video><div class="cam-oval" id="cam-oval"></div></div>' +
+      '<p class="cam-hint" id="cam-hint"></p>' +
+      '<button class="wiz-cam-btn" type="button" id="verify-capture" aria-label="گرفتن عکس">' + wizCameraSvg() + '</button>';
+  } else if (step === 3) {
+    h += '<div class="wiz-hero">' + wizTurnSvg() + '</div>' +
+      '<div class="wiz-title">راهنمای عکس نیم‌رخ</div>' +
+      wizCard('۱. سر خود را به سمت راست بچرخانید', wizTurnHeadSvg()) +
+      wizCard('۲. گوش و خط فک مشخص باشد', wizEarSvg()) +
+      '<button class="wiz-btn" type="button" id="verify-wizard-continue">ادامه</button>';
+  } else if (step === 4) {
+    h += '<div class="wiz-title">عکس نیم‌رخ</div>' +
+      '<div class="wiz-cam-frame"><video id="cam-video" autoplay playsinline muted></video><div id="cam-profile-outline">' + wizProfileOutlineSvg() + '</div></div>' +
+      '<p class="cam-hint" id="cam-hint"></p>' +
+      '<button class="wiz-cam-btn" type="button" id="verify-capture" aria-label="گرفتن عکس">' + wizCameraSvg() + '</button>';
+    if (w.profile) h += '<p class="wiz-note">در حال ارسال…</p>';
+    if (w.sendFailed) h += '<button class="wiz-btn" type="button" id="verify-send-photos">تلاش دوباره برای ارسال</button>';
+  } else {
+    h += '<div class="wiz-seal">' + wizSealSvg() + '</div>' +
+      '<div class="wiz-title">ارسال شد برای بررسی پشتیبانی</div>' +
+      wizDoneCard('۱. عکس تمام‌رخ ثبت شد', wizFaceFrontSvg()) +
+      wizDoneCard('۲. عکس نیم‌رخ ثبت شد', wizFaceProfileSvg()) +
+      '<p class="wiz-note">نتیجه پس از بررسی پشتیبانی اعلام می‌شود</p>' +
+      '<button class="wiz-btn" type="button" id="verify-wizard-done">بازگشت</button>';
   }
   return h;
 }
-function startCamera() {
-  state.cam = { step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, faceAligned: false, autoDetect: false, error: null, alignedTicks: 0, longSteadyTicks: 0, needMotion: false, prevFrame: null, prevTime: 0, steadyCv: null, steadyCtx: null, autoHoldUntil: 0, opening: false };
+function ensureWizardCam() {
+  if (state.cam) return;
+  state.cam = { wizard: 1, step: "front", front: null, profile: null, stream: null, detector: null, timer: null, detecting: false, aligned: false, faceAligned: false, autoDetect: false, error: null, alignedTicks: 0, longSteadyTicks: 0, needMotion: false, prevFrame: null, prevTime: 0, steadyCv: null, steadyCtx: null, autoHoldUntil: 0, opening: false, sendFailed: false };
+}
+function startFrontCamera() {
+  const cam = state.cam;
+  if (!cam) return;
+  cam.wizard = 2;
   renderVerify();
   startCameraStream();
 }
+function wizardBack() {
+  const cam = state.cam;
+  if (!cam) return;
+  if (cam.wizard === 2) { stopCameraStream(); cam.wizard = 1; renderVerify(); }
+  else if (cam.wizard === 3) { cam.wizard = 2; renderVerify(); startCameraStream(); }
+  else if (cam.wizard === 4) { stopCameraStream(); cam.wizard = 3; renderVerify(); }
+  else if (cam.wizard === 5) { wizardDone(); }
+}
+function wizardClose() {
+  if (window.Telegram && Telegram.WebApp && Telegram.WebApp.close) Telegram.WebApp.close();
+  else showWelcome();
+}
+function wizardDone() {
+  stopCamera();
+  renderVerify();
+}
 // v148: re-open the camera for the CURRENT step without resetting
-// the photos — the profile page's own «باز کردن دوربین» button and
-// the camera-error retry both use this, so a failed profile open
-// never wipes the front photo. The turn gate arms here (needMotion)
-// because the profile page opens its camera fresh.
+// the photos — the wizard's «ادامه» button and the camera-error
+// retry both use this, so a failed profile open never wipes the
+// front photo. The turn gate arms here (needMotion) because the
+// profile page opens its camera fresh.
 function openCameraForStep() {
   const cam = state.cam;
   if (!cam || !cam.step || cam.step === "done") return;
@@ -4701,6 +4828,11 @@ function isSkinPixel(r, g, b) {
   const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
   return y > 50 && cr >= 133 && cr <= 173 && cb >= 77 && cb <= 127;
 }
+function camOvalEl() {
+  // v149: the front screen has the oval; the profile screen has the
+  // head-outline in the same box — the skin/face gates use either.
+  return document.querySelector(".cam-oval") || document.getElementById("cam-profile-outline");
+}
 function faceFillsOval(videoEl, data) {
   // v140: the face must FULLY fill the oval before the shot — sample
   // the oval's ellipse on the 32x32 frame and require at least half
@@ -4709,7 +4841,7 @@ function faceFillsOval(videoEl, data) {
   const el = videoEl.getBoundingClientRect();
   const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
   if (!vw || !vh || !el.width || !el.height || !data) return false;
-  const oval = document.querySelector(".cam-oval");
+  const oval = camOvalEl();
   if (!oval) return false;
   const or = oval.getBoundingClientRect();
   const scale = Math.max(el.width / vw, el.height / vh);
@@ -4742,7 +4874,7 @@ function faceFitsOval(box, videoEl) {
   const ox = (el.width - vw * scale) / 2, oy = (el.height - vh * scale) / 2;
   const fx = ox + box.x * scale, fy = oy + box.y * scale;
   const fw = box.width * scale, fh = box.height * scale;
-  const oval = document.querySelector(".cam-oval");
+  const oval = camOvalEl();
   if (!oval) return false;
   const or = oval.getBoundingClientRect();
   // Both rects are viewport-relative — bring the oval centre into the
@@ -4756,21 +4888,21 @@ function faceFitsOval(box, videoEl) {
 function camHintText() {
   const cam = state.cam;
   if (!cam) return "";
-  if (cam.step === "done") return "هر دو عکس ثبت شد — بفرست برای بررسی.";
-  let stepTxt = cam.step === "front" ? "مرحله ۱ از ۲ — تمام‌رخ: رو به دوربین" : "مرحله ۲ از ۲ — نیم‌رخ: سرت رو آروم به چپ بچرخون";
-  if (cam.step === "profile" && cam.front) stepTxt = "تمام‌رخ ثبت شد ✓ — " + stepTxt;
-  if (cam.aligned) {
-    // v147: the oval is green — the framing is good, but nothing
-    // shoots on its own any more; the user taps «گرفتن عکس».
-    return stepTxt + " ✓ سبز شد — آماده‌ست، دکمه «گرفتن عکس» رو بزن.";
-  }
-  return stepTxt + " — صورتت رو داخل بیضی بذار و ثابت نگه دار، بعد دکمه «گرفتن عکس» رو بزن.";
+  if (cam.step === "done") return "هر دو عکس ثبت شد — در حال ارسال…";
+  // v149: the wizard's camera screens use the design's short
+  // instructions — frame the face, then tap the camera button.
+  if (cam.step === "front") return cam.aligned ? "آماده‌ست — دکمه‌ی دوربین رو بزن" : "صورت خود را داخل کادر قرار دهید";
+  return cam.aligned ? "آماده‌ست — دکمه‌ی دوربین رو بزن" : "سر خود را به سمت راست بچرخانید";
 }
 function updateCamUi() {
   const cam = state.cam;
   if (!cam) return;
   const oval = document.querySelector(".cam-oval");
   if (oval) oval.classList.toggle("ok", !!cam.aligned);
+  // v149: the profile screen has the head-outline instead of the
+  // oval — it turns green the same way when the face is aligned.
+  const prof = document.getElementById("cam-profile-outline");
+  if (prof) prof.classList.toggle("ok", !!cam.aligned);
   const hint = document.getElementById("cam-hint");
   if (hint) hint.textContent = camHintText();
   // v147: the profile button stays disabled until the turn is
@@ -4793,14 +4925,15 @@ function capturePhoto(isAuto) {
   const url = c.toDataURL("image/jpeg", 0.82);
   if (cam.step === "front") {
     cam.front = url; cam.step = "profile";
-    // v148: the profile step is a SEPARATE PAGE — stop the camera
-    // here; the profile page opens its own camera (openCameraForStep),
-    // which arms the turn gate (needMotion) then, so the profile
-    // shot can't be a second front photo taken while still facing
-    // forward.
+    // v149: the next wizard step is the profile guide (3/5) — stop
+    // the camera here; the profile page (4/5) opens its own camera
+    // with its own button (openCameraForStep), which arms the turn
+    // gate (needMotion) then, so the profile shot can't be a second
+    // front photo taken while still facing forward.
+    cam.wizard = 3;
     stopCameraStream();
   }
-  else if (cam.step === "profile") { cam.profile = url; cam.step = "done"; stopCameraStream(); }
+  else if (cam.step === "profile") { cam.profile = url; cam.step = "done"; stopCameraStream(); sendVerificationPhotos(); }
   cam.aligned = false;
   cam.faceAligned = false;
   cam.alignedTicks = 0;
@@ -4823,6 +4956,7 @@ function stopCamera() {
 async function sendVerificationPhotos() {
   const cam = state.cam;
   if (!cam || !cam.front || !cam.profile) return;
+  cam.sendFailed = false;
   const btn = document.getElementById("verify-send-photos");
   if (btn) btn.disabled = true;
   try {
@@ -4834,11 +4968,17 @@ async function sendVerificationPhotos() {
     // The bot promotes the verification row to pending within ~10s;
     // show the pending state now — the 10s poll confirms it.
     state.verification = Object.assign({}, state.verification, { video_status: "pending" });
-    stopCamera();
+    // v149: the profile photo auto-sends — the sent screen (wizard
+    // step 5) replaces the old done page. Only the stream stops;
+    // the wizard state stays, so the poll keeps showing step 5.
+    stopCameraStream();
+    if (state.cam) state.cam.wizard = 5;
     renderVerify();
   } catch (e) {
+    if (state.cam) state.cam.sendFailed = true;
     if (btn) btn.disabled = false;
     showToast("ارسال نشد، دوباره امتحان کن");
+    renderVerify();
   }
 }
 function renderWelcome() {
@@ -5359,7 +5499,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v148 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v149 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
