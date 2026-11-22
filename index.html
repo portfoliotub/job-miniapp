@@ -638,7 +638,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v154</span>
+<span class="app-version" id="app-version">v155</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -5075,10 +5075,7 @@ function renderProfile() {
     '<textarea id="pf-bio">' + esc(p.bio || "") + "</textarea>" +
     '<div class="row-btns"><button class="btn" type="submit">ذخیره پروفایل</button>' +
     '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
-    "</form>" +
-    '<div class="card"><div class="card-head"><div class="card-title">تایید هویت</div></div>' +
-    '<p class="desc" id="profile-verify-desc">برای ارسال درخواست، هویتت باید تایید شده باشه (شماره تلفن + عکس تمام‌رخ و نیم‌رخ با دوربین).</p>' +
-    '<button class="btn" type="button" id="profile-verify">تایید هویت</button></div>';
+    "</form>";
   document.getElementById("profile-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
     saveProfile({
@@ -5091,14 +5088,8 @@ function renderProfile() {
     });
     showToast("پروفایل ذخیره شد ✓");
   });
-  // v122: verification entry from the freelancer profile.
-  document.getElementById("profile-verify").addEventListener("click", function () { openVerify(); });
-  ensureVerification().then(function (v) {
-    const d = document.getElementById("profile-verify-desc");
-    if (d && isVerified(v)) d.textContent = "هویتت تایید شد ✓ — می‌تونی برای آگهی‌ها درخواست بفرستی.";
-    const b = document.getElementById("profile-verify");
-    if (b && isVerified(v)) b.textContent = "مشاهده تایید هویت";
-  }).catch(function () {});
+  // v155 (user order 2026-11-22): the identity-verification card is
+  // gone from the freelancer profile — no card, no entry button.
   // v26: a dead photo URL falls back to the letter avatar.
   const photoImg = viewEl().querySelector(".avatar-photo");
   if (photoImg) photoImg.addEventListener("error", function () { photoImg.remove(); });
@@ -5507,7 +5498,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v154 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v155 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
