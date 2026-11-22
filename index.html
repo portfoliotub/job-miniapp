@@ -638,7 +638,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v153</span>
+<span class="app-version" id="app-version">v154</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4479,8 +4479,6 @@ function renderVerify() {
   if (startBtn) startBtn.addEventListener("click", startFrontCamera);
   const contBtn = document.getElementById("verify-wizard-continue");
   if (contBtn) contBtn.addEventListener("click", function () { if (state.cam) { state.cam.wizard = 4; openCameraForStep(); } });
-  const doneBtn = document.getElementById("verify-wizard-done");
-  if (doneBtn) doneBtn.addEventListener("click", wizardDone);
   const camBtn = document.getElementById("verify-open-camera");
   // v148: a failed open must not wipe the photos already taken —
   // the retry re-opens the camera for the current step.
@@ -4681,8 +4679,7 @@ function wizardHtml(w) {
       '<div class="wiz-title">ارسال شد برای بررسی پشتیبانی</div>' +
       wizDoneCard('۱. عکس تمام‌رخ ثبت شد', wizFaceFrontSvg()) +
       wizDoneCard('۲. عکس نیم‌رخ ثبت شد', wizFaceProfileSvg()) +
-      '<p class="wiz-note">نتیجه پس از بررسی پشتیبانی اعلام می‌شود</p>' +
-      '<button class="wiz-btn" type="button" id="verify-wizard-done">بازگشت</button>';
+      '<p class="wiz-note">نتیجه پس از بررسی پشتیبانی اعلام می‌شود</p>';
   }
   return h;
 }
@@ -4696,10 +4693,6 @@ function startFrontCamera() {
   cam.wizard = 2;
   renderVerify();
   startCameraStream();
-}
-function wizardDone() {
-  stopCamera();
-  renderVerify();
 }
 // v148: re-open the camera for the CURRENT step without resetting
 // the photos — the wizard's «ادامه» button and the camera-error
@@ -5514,7 +5507,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v153 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v154 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
