@@ -638,7 +638,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v152</span>
+<span class="app-version" id="app-version">v153</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -4382,10 +4382,12 @@ function renderVerify() {
   const phoneDone = !!(v && v.phone_verified);
   const vs = v ? v.video_status : "none";
   const videoDone = vs === "approved";
-  // v149: after the photos auto-send, the sent screen (wizard step
-  // 5) stays up even once the server confirms pending — the poll
-  // re-renders here, not to the old pending card.
-  const showWizardSent = !!(state.cam && state.cam.wizard === 5 && vs === "pending");
+  // v153 (user order 2026-11-22): the sent screen is the SERVER
+  // state, not the in-memory wizard — a pending submission shows
+  // the same «ارسال شد» page even after the user closes and reopens
+  // the mini app (state.cam is gone on a fresh open); it never
+  // restarts from the intro.
+  const showWizardSent = vs === "pending";
   // v149: the sent screen (step 5) is only valid while the submission
   // is pending — if the server state says the flow never sent (none)
   // or was rejected, the wizard restarts from the intro so the user
@@ -4440,6 +4442,11 @@ function renderVerify() {
   if (camActionable || showWizardSent) {
     ensureWizardCam();
     const w = state.cam;
+    // v153: a pending submission IS the sent step — on a fresh open
+    // the wizard was never built, so point it at step 5 (and drop
+    // any stale camera error: the photos were sent, so the camera
+    // already worked).
+    if (vs === "pending") { w.wizard = 5; w.error = null; }
     if (w.error === "camera") {
       // v151 (user order 2026-11-22): when the camera was denied,
       // the denied screen offers ONLY the retry — the «فرستادن ویدیو
@@ -5507,7 +5514,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v152 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v153 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
