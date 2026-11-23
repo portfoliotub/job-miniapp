@@ -638,7 +638,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v155</span>
+<span class="app-version" id="app-version">v156</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -2287,11 +2287,13 @@ function confirmDeleteApp() {
 
 /* v109 (user order 2026-11-13): the handshake — the employer found a
    freelancer for an APPROVED ad. Tapping the handshake asks first
-   (same بله / خیر sheet as the delete); «بله» records the choice
+   (same confirm / خیر sheet as the delete); confirming records the choice
    durably and the bot then removes the «ارسال درخواست» button from
    the channel post (the post's TEXT stays) and marks the ad filled,
    so nobody can apply anymore. Like decision_requests (v70), the
-   direct insert IS the durable signal — sendData best-effort only. */
+   direct insert IS the durable signal — sendData best-effort only.
+   v156 (user order 2026-11-23): confirm button reads «فریلنسر پیدا
+   کردم» and the sheet text says «فرد مورد نظر پیدا کردم». */
 function openHandshakeConfirm(jobId) {
   const job = state.jobById[jobId] || state.myJobs.find(function (j) { return j.id === jobId; });
   if (!job) { showToast("آگهی پیدا نشد"); return; }
@@ -2300,8 +2302,8 @@ function openHandshakeConfirm(jobId) {
   const overlay = document.getElementById("sheet-overlay");
   const sheet = document.getElementById("sheet");
   sheet.innerHTML = '<div class="sheet-handle"></div><div class="sheet-title">فریلنسر پیدا شد؟</div>' +
-    '<div class="sheet-text">آگهی «<b>' + esc(job.title) + '</b>» تکمیل می‌شود — لینک ثبت درخواست از پست کانال حذف می‌شود و دیگر کسی نمی‌تواند درخواست بفرستد. متن آگهی در کانال می‌ماند.</div>' +
-    '<div class="row-btns"><button class="btn" type="button" id="hs-yes">بله، تکمیل شود</button><button class="btn btn-ghost" type="button" id="hs-no">خیر</button></div>';
+    '<div class="sheet-text">آگهی «<b>' + esc(job.title) + '</b>» تکمیل می‌شود — فرد مورد نظر پیدا کردم. لینک ثبت درخواست از پست کانال حذف می‌شود و دیگر کسی نمی‌تواند درخواست بفرستد. متن آگهی در کانال می‌ماند.</div>' +
+    '<div class="row-btns"><button class="btn" type="button" id="hs-yes">فریلنسر پیدا کردم</button><button class="btn btn-ghost" type="button" id="hs-no">خیر</button></div>';
   overlay.hidden = false;
   requestAnimationFrame(function () { overlay.classList.add("open"); });
   document.getElementById("hs-yes").addEventListener("click", function () { closePicker(); confirmHandshake(); });
@@ -5498,7 +5500,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v155 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v156 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
