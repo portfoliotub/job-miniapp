@@ -638,7 +638,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v156</span>
+<span class="app-version" id="app-version">v157</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -664,9 +664,9 @@ const CONFIG = {
 };
 
 /* ================= constants ================= */
-const CATEGORIES = ["تامنیل", "ادیت ویدیو", "اسکریپت", "سایر"];
-const DEADLINES = ["یک روزه", "دو روزه", "سه روزه", "چهار روزه", "پنج روزه", "شش روزه", "هفت روزه", "بیشتر از هفت روز"];
-const WORK_TYPES = ["دورکاری", "حضوری"];
+const CATEGORIES = ["تامنیل", "ادیت ویدیو", "اسکریپت", "مدیر کانال", "مدیر خلاق", "استراتژیک یوتیوب", "نویسنده فیلمنامه", "تهیه کننده یوتیوب", "سایر"];
+const DEADLINES = ["توافقی", "یک روزه", "دو روزه", "سه روزه", "چهار روزه", "پنج روزه", "شش روزه", "هفت روزه", "بیشتر از هفت روز"];
+const WORK_TYPES = ["دورکاری", "حضوری", "ترکیبی"];
 const STATUS_LABEL = {
   open: "باز", closed: "بسته",
   pending: "در انتظار", accepted: "قبول شد", rejected: "رد شد"
@@ -5500,7 +5500,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v156 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v157 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
