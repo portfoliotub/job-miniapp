@@ -638,7 +638,7 @@
 </head>
 <body>
 <span class="mock-badge" id="mock-badge" hidden>حالت پیش‌نمایش</span>
-<span class="app-version" id="app-version">v157</span>
+<span class="app-version" id="app-version">v158</span>
 <main id="view"></main>
 <nav id="tabs"></nav>
 <div id="toast"></div>
@@ -2352,7 +2352,7 @@ function renderPost() {
     pickerButton("p-deadline", job.deadline || "", "انتخاب کنید") +
     '<label>نوع همکاری</label>' +
     pickerButton("p-work-type", job.work_type || "", "انتخاب کنید") +
-    '<div id="p-location-wrap" ' + (job.work_type === "حضوری" ? "" : "hidden") + '><label>منطقه / شهر</label>' +
+    '<div id="p-location-wrap" ' + (job.work_type === "حضوری" || job.work_type === "ترکیبی" ? "" : "hidden") + '><label>کشور / شهر</label>' +
     '<input id="p-location" type="text" placeholder="مثلا: تهران، سعادت‌آباد" value="' + esc(job.location || "") + '"></div>' +
     '<label>توضیحات</label>' +
     '<textarea id="p-description" placeholder="نوع کار، مدت ویدیو، سبک موردنظر، نحوه تحویل…">' + esc(job.description || "") + '</textarea>' +
@@ -2368,7 +2368,7 @@ function renderPost() {
   wirePicker("p-category", "دسته‌بندی", CATEGORIES);
   wirePicker("p-deadline", "ددلاین", DEADLINES);
   wirePicker("p-work-type", "نوع همکاری", WORK_TYPES, function (v) {
-    document.getElementById("p-location-wrap").hidden = v !== "حضوری";
+    document.getElementById("p-location-wrap").hidden = v !== "حضوری" && v !== "ترکیبی";
   });
 }
 async function submitPostJob(ev) {
@@ -2403,7 +2403,7 @@ async function submitPostJob(ev) {
   if (isNaN(budgetNum) || budgetNum < 7) { showToast("حداقل بودجه ۷ دلار است"); return; }
   if (!payload.deadline) { showToast("ددلاین را انتخاب کنید"); return; }
   if (!workType) { showToast("نوع همکاری را انتخاب کنید"); return; }
-  if (workType === "حضوری" && !location) { showToast("منطقه را مشخص کنید"); return; }
+  if ((workType === "حضوری" || workType === "ترکیبی") && !location) { showToast("کشور را مشخص کنید"); return; }
   if (!payload.description) { showToast("توضیحات آگهی را وارد کنید"); return; }
   // v62: edit mode — PATCH the existing row. v63: only a rejected ad
   // can be edited (the pencil is locked otherwise); saving it resubmits
@@ -5500,7 +5500,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v157 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v158 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
