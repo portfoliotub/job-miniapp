@@ -4857,8 +4857,7 @@ function renderProfile() {
     pickerButton("pf-country", p.country || "", "انتخاب کنید") +
     '<label>درباره من</label>' +
     '<textarea id="pf-bio">' + esc(p.bio || "") + "</textarea>" +
-    '<div class="row-btns profile-actions"><button class="btn btn-icon" type="submit">' + ICONS.check + 'ذخیره پروفایل</button>' +
-    '<button class="btn btn-icon btn-secondary" type="button" id="switch-role"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>تغییر نقش</button></div>' +
+    '<div class="row-btns profile-actions"><button class="btn" type="submit">ذخیره پروفایل</button></div>' +
     "</form>";
   document.getElementById("profile-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -4900,7 +4899,6 @@ function renderProfile() {
   wirePicker("pf-country", "کشور", COUNTRIES);
   const bannerImg = document.getElementById("banner-img");
   if (bannerImg) bannerImg.addEventListener("error", function () { bannerImg.remove(); });
-  document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
   // v116: name edit wiring (same as the employer's, v108).
   const flNameEditBtn = document.getElementById("fl-name-edit");
   if (flNameEditBtn) flNameEditBtn.addEventListener("click", function () {
@@ -4983,9 +4981,8 @@ function renderEmployerProfile() {
     nameBlock + "</div>" +
     '<div class="meta" style="text-align:center;padding:0 14px 14px;">' + esc(hint) + "</div>" +
     "</div>" +
-    '<div class="row-btns profile-actions"><button class="btn btn-icon" type="button" id="emp-my-jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>آگهی‌های من</button>' +
-    '<button class="btn btn-icon btn-secondary" type="button" id="switch-role"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>تغییر نقش</button></div>' +
-    (ph.source === "manual" ? '<div class="row-btns"><button class="btn btn-icon btn-danger" type="button" id="emp-photo-remove">' + ICONS.trash + 'حذف عکس پروفایل</button></div>' : "");
+    '<div class="row-btns profile-actions"><button class="btn" type="button" id="emp-my-jobs">آگهی‌های من</button></div>' +
+    (ph.source === "manual" ? '<div class="row-btns"><button class="btn btn-danger" type="button" id="emp-photo-remove">حذف عکس پروفایل</button></div>' : "");
   // v26: a dead photo URL falls back to the letter avatar.
   const photoImg = viewEl().querySelector(".avatar-photo");
   if (photoImg) photoImg.addEventListener("error", function () { photoImg.remove(); });
@@ -5035,7 +5032,6 @@ function renderEmployerProfile() {
     showToast("عکس پروفایل حذف شد");
   });
   document.getElementById("emp-my-jobs").addEventListener("click", function () { switchTab("my-jobs"); });
-  document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
 }
 
 function bindBack(tab) {
@@ -5237,7 +5233,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v160 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v161 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
