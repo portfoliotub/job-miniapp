@@ -135,7 +135,7 @@
   .role-badge { display: inline-block; font-size: 12px; font-weight: 700; color: var(--link); background: color-mix(in srgb, var(--link) 12%, transparent); border-radius: 999px; padding: 3px 10px; margin-top: 6px; }
   .btn-icon { display: flex; align-items: center; justify-content: center; gap: 8px; }
   .btn-icon svg { width: 18px; height: 18px; flex: none; }
-  .btn.btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--separator); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--separator); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
   .profile-actions { margin-top: 14px; }
   nav#tabs { box-shadow: 0 -4px 16px rgba(0,0,0,0.06); }
   nav#tabs button .ico { opacity: 0.6; filter: saturate(0.6); transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s; }
@@ -4858,7 +4858,7 @@ function renderProfile() {
     '<label>درباره من</label>' +
     '<textarea id="pf-bio">' + esc(p.bio || "") + "</textarea>" +
     '<div class="row-btns profile-actions"><button class="btn" type="submit">ذخیره پروفایل</button>' +
-    '<button class="btn btn-secondary" type="button" id="switch-role">تغییر نقش</button></div>' +
+    '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
     "</form>";
   document.getElementById("profile-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -4984,7 +4984,7 @@ function renderEmployerProfile() {
     '<div class="meta" style="text-align:center;padding:0 14px 14px;">' + esc(hint) + "</div>" +
     "</div>" +
     '<div class="row-btns profile-actions"><button class="btn" type="button" id="emp-my-jobs">آگهی‌های من</button>' +
-    '<button class="btn btn-secondary" type="button" id="switch-role">تغییر نقش</button></div>' +
+    '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
     (ph.source === "manual" ? '<div class="row-btns"><button class="btn btn-danger" type="button" id="emp-photo-remove">حذف عکس پروفایل</button></div>' : "");
   // v26: a dead photo URL falls back to the letter avatar.
   const photoImg = viewEl().querySelector(".avatar-photo");
@@ -5237,7 +5237,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v162 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v163 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
