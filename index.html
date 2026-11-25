@@ -135,7 +135,7 @@
   .role-badge { display: inline-block; font-size: 12px; font-weight: 700; color: var(--link); background: color-mix(in srgb, var(--link) 12%, transparent); border-radius: 999px; padding: 3px 10px; margin-top: 6px; }
   .btn-icon { display: flex; align-items: center; justify-content: center; gap: 8px; }
   .btn-icon svg { width: 18px; height: 18px; flex: none; }
-  .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--separator); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .btn.btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--separator); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
   .profile-actions { margin-top: 14px; }
   nav#tabs { box-shadow: 0 -4px 16px rgba(0,0,0,0.06); }
   nav#tabs button .ico { opacity: 0.6; filter: saturate(0.6); transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s; }
@@ -4857,7 +4857,8 @@ function renderProfile() {
     pickerButton("pf-country", p.country || "", "انتخاب کنید") +
     '<label>درباره من</label>' +
     '<textarea id="pf-bio">' + esc(p.bio || "") + "</textarea>" +
-    '<div class="row-btns profile-actions"><button class="btn" type="submit">ذخیره پروفایل</button></div>' +
+    '<div class="row-btns profile-actions"><button class="btn" type="submit">ذخیره پروفایل</button>' +
+    '<button class="btn btn-secondary" type="button" id="switch-role">تغییر نقش</button></div>' +
     "</form>";
   document.getElementById("profile-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -4899,6 +4900,7 @@ function renderProfile() {
   wirePicker("pf-country", "کشور", COUNTRIES);
   const bannerImg = document.getElementById("banner-img");
   if (bannerImg) bannerImg.addEventListener("error", function () { bannerImg.remove(); });
+  document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
   // v116: name edit wiring (same as the employer's, v108).
   const flNameEditBtn = document.getElementById("fl-name-edit");
   if (flNameEditBtn) flNameEditBtn.addEventListener("click", function () {
@@ -4981,7 +4983,8 @@ function renderEmployerProfile() {
     nameBlock + "</div>" +
     '<div class="meta" style="text-align:center;padding:0 14px 14px;">' + esc(hint) + "</div>" +
     "</div>" +
-    '<div class="row-btns profile-actions"><button class="btn" type="button" id="emp-my-jobs">آگهی‌های من</button></div>' +
+    '<div class="row-btns profile-actions"><button class="btn" type="button" id="emp-my-jobs">آگهی‌های من</button>' +
+    '<button class="btn btn-secondary" type="button" id="switch-role">تغییر نقش</button></div>' +
     (ph.source === "manual" ? '<div class="row-btns"><button class="btn btn-danger" type="button" id="emp-photo-remove">حذف عکس پروفایل</button></div>' : "");
   // v26: a dead photo URL falls back to the letter avatar.
   const photoImg = viewEl().querySelector(".avatar-photo");
@@ -5032,6 +5035,7 @@ function renderEmployerProfile() {
     showToast("عکس پروفایل حذف شد");
   });
   document.getElementById("emp-my-jobs").addEventListener("click", function () { switchTab("my-jobs"); });
+  document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
 }
 
 function bindBack(tab) {
@@ -5233,7 +5237,7 @@ async function switchTab(tab) {
       (new URLSearchParams(window.location.search).get("tgWebAppData") || "").indexOf("query_id=") !== -1;
   } catch (e) {}
   document.getElementById("app-version").textContent =
-    "v161 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
+    "v162 · " + (MOCK ? "پیش‌نمایش" : "واقعی") +
     " · tg:" + (tg ? "✓" : "✗") +
     " proxy:" + (window.TelegramWebviewProxy ? "✓" : "✗") +
     " qid:" + (hasQid ? "✓" : "✗") +
