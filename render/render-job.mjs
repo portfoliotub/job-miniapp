@@ -6,9 +6,12 @@ import fs from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 
 const WORKER = process.env.WORKER_URL || 'https://html-to-video-bot.1ravixo.workers.dev';
+// workers.dev blocks some non-browser user agents (e.g. Python urllib),
+// so identify as a browser on every request.
+const HEADERS = { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' };
 
 async function main() {
-  const queueRes = await fetch(`${WORKER}/queue`);
+  const queueRes = await fetch(`${WORKER}/queue`, { headers: HEADERS });
   if (!queueRes.ok) throw new Error('queue fetch failed: ' + queueRes.status);
   const queue = await queueRes.json();
   const job = (queue.jobs || []).find((j) => j.status === 'queued');
@@ -17,20 +20,20 @@ async function main() {
     return;
   }
   console.log('Claiming job', job.id);
-  const claim = await fetch(`${WORKER}/job/${job.id}/claim`, { method: 'POST' });
+  const claim = await fetch(`${WORKER}/job/${job.id}/claim`, { method: 'POST', headers: HEADERS });
   if (!claim.ok) {
     console.log('Claim failed (already taken?):', claim.status);
     return;
   }
-  const meta = await (await fetch(`${WORKER}/job/${job.id}`)).json();
+  const meta = await (await fetch(`${WORKER}/job/${job.id}`, { headers: HEADERS })).json();
   const duration = meta.duration || 5;
 
-  const html = await (await fetch(`${WORKER}/job/${job.id}/html`)).text();
+  const html = await (await fetch(`${WORKER}/job/${job.id}/html`, { headers: HEADERS })).text();
   fs.writeFileSync('job.html', html);
 
   // Sound: user-provided audio if the job has one, else built-in sound effects.
   let audioArg = [];
-  const audioRes = await fetch(`${WORKER}/job/${job.id}/audio`);
+  const audioRes = await fetch(`${WORKER}/job/${job.id}/audio`, { headers: HEADERS });
   if (audioRes.ok) {
     const buf = Buffer.from(await audioRes.arrayBuffer());
     if (buf.length > 0) {
@@ -55,9 +58,9 @@ async function main() {
 
   const form = new FormData();
   form.append('video', new Blob([fs.readFileSync('job.mp4')], { type: 'video/mp4' }), 'job.mp4');
-  const up = await fetch(`${WORKER}/job/${job.id}/result`, { method: 'POST', body: form });
+  const up = await fetch(`${WORKER}/job/${job.id}/result`, { method: 'POST', body: form, headers: HEADERS });
   if (!up.ok) throw new Error('result upload failed: ' + up.status);
-  const nt = await fetch(`${WORKER}/job/${job.id}/notify`, { method: 'POST' });
+  const nt = await fetch(`${WORKER}/job/${job.id}/notify`, { method: 'POST', headers: HEADERS });
   console.log('Notified worker:', nt.status);
   console.log('Done:', job.id);
 }
