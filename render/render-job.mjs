@@ -1,1 +1,66 @@
-Ly8gSm9iIHJ1bm5lcjogcGlja3MgT05FIHF1ZXVlZCBqb2IgZnJvbSB0aGUgQ2xvdWRmbGFyZSBXb3JrZXIsIHJlbmRlcnMgaXQKLy8gYXQgMTkyMHgxMDgwIHdpdGggc291bmQgZWZmZWN0cywgYW5kIHVwbG9hZHMgdGhlIE1QNCBiYWNrLgovLyBSdW5zIG9uIEdpdEh1YiBBY3Rpb25zIChjcm9uIGV2ZXJ5IDUgbWluKSDigJQgZnJlZSBmb3IgcHVibGljIHJlcG9zLgovLyBDYW4gYWxzbyBydW4gbG9jYWxseSBmb3IgdGVzdGluZzogbm9kZSByZW5kZXItam9iLm1qcwppbXBvcnQgZnMgZnJvbSAnbm9kZTpmcyc7CmltcG9ydCB7IGV4ZWNGaWxlU3luYywgc3Bhd25TeW5jIH0gZnJvbSAnbm9kZTpjaGlsZF9wcm9jZXNzJzsKCmNvbnN0IFdPUktFUiA9IHByb2Nlc3MuZW52LldPUktFUl9VUkwgfHwgJ2h0dHBzOi8vaHRtbC10by12aWRlby1ib3QuMXJhdml4by53b3JrZXJzLmRldic7Ci8vIHdvcmtlcnMuZGV2IGJsb2NrcyBzb21lIG5vbi1icm93c2VyIHVzZXIgYWdlbnRzIChlLmcuIFB5dGhvbiB1cmxsaWIpLAovLyBzbyBpZGVudGlmeSBhcyBhIGJyb3dzZXIgb24gZXZlcnkgcmVxdWVzdC4KY29uc3QgSEVBREVSUyA9IHsgJ1VzZXItQWdlbnQnOiAnTW96aWxsYS81LjAgKFgxMTsgTGludXggeDg2XzY0KSBBcHBsZVdlYktpdC81MzcuMzYgKEtIVE1MLCBsaWtlIEdlY2tvKSBDaHJvbWUvMTMxLjAuMC4wIFNhZmFyaS81MzcuMzYnIH07Cgphc3luYyBmdW5jdGlvbiBtYWluKCkgewogIGNvbnN0IHF1ZXVlUmVzID0gYXdhaXQgZmV0Y2goYCR7V09SS0VSfS9xdWV1ZWAsIHsgaGVhZGVyczogSEVBREVSUyB9KTsKICBpZiAoIXF1ZXVlUmVzLm9rKSB0aHJvdyBuZXcgRXJyb3IoJ3F1ZXVlIGZldGNoIGZhaWxlZDogJyArIHF1ZXVlUmVzLnN0YXR1cyk7CiAgY29uc3QgcXVldWUgPSBhd2FpdCBxdWV1ZVJlcy5qc29uKCk7CiAgY29uc3Qgam9iID0gKHF1ZXVlLmpvYnMgfHwgW10pLmZpbmQoKGopID0+IGouc3RhdHVzID09PSAncXVldWVkJyk7CiAgaWYgKCFqb2IpIHsKICAgIGNvbnNvbGUubG9nKCdObyBxdWV1ZWQgam9icy4nKTsKICAgIHJldHVybjsKICB9CiAgY29uc29sZS5sb2coJ0NsYWltaW5nIGpvYicsIGpvYi5pZCk7CiAgY29uc3QgY2xhaW0gPSBhd2FpdCBmZXRjaChgJHtXT1JLRVJ9L2pvYi8ke2pvYi5pZH0vY2xhaW1gLCB7IG1ldGhvZDogJ1BPU1QnLCBoZWFkZXJzOiBIRUFERVJTIH0pOwogIGlmICghY2xhaW0ub2spIHsKICAgIGNvbnNvbGUubG9nKCdDbGFpbSBmYWlsZWQgKGFscmVhZHkgdGFrZW4/KTonLCBjbGFpbS5zdGF0dXMpOwogICAgcmV0dXJuOwogIH0KICBjb25zdCBtZXRhID0gYXdhaXQgKGF3YWl0IGZldGNoKGAke1dPUktFUn0vam9iLyR7am9iLmlkfWAsIHsgaGVhZGVyczogSEVBREVSUyB9KSkuanNvbigpOwogIGNvbnN0IGR1cmF0aW9uID0gbWV0YS5kdXJhdGlvbiB8fCA1OwoKICBjb25zdCBodG1sID0gYXdhaXQgKGF3YWl0IGZldGNoKGAke1dPUktFUn0vam9iLyR7am9iLmlkfS9odG1sYCwgeyBoZWFkZXJzOiBIRUFERVJTIH0pKS50ZXh0KCk7CiAgZnMud3JpdGVGaWxlU3luYygnam9iLmh0bWwnLCBodG1sKTsKCiAgLy8gU291bmQ6IHVzZXItcHJvdmlkZWQgYXVkaW8gaWYgdGhlIGpvYiBoYXMgb25lLiBPdGhlcndpc2UgY29udmVydC5tanMKICAvLyBidWlsZHMgc291bmQgZWZmZWN0cyBmcm9tIHRoZSBzY2VuZSBpdHNlbGYgKHRodWRzLCB3aG9vc2hlcywgcG9wcyDigJQKICAvLyBtYXRjaGVkIHRvIHRoZSBtb3ZlbWVudHMgYW5kIGV2ZW50cyBpbiB0aGUgYW5pbWF0aW9uKS4gTm8gbXVzaWMsIG5vIHNwZWVjaC4KICBsZXQgYXVkaW9BcmcgPSBbXTsKICBjb25zdCBhdWRpb1JlcyA9IGF3YWl0IGZldGNoKGAke1dPUktFUn0vam9iLyR7am9iLmlkfS9hdWRpb2AsIHsgaGVhZGVyczogSEVBREVSUyB9KTsKICBpZiAoYXVkaW9SZXMub2spIHsKICAgIGNvbnN0IGJ1ZiA9IEJ1ZmZlci5mcm9tKGF3YWl0IGF1ZGlvUmVzLmFycmF5QnVmZmVyKCkpOwogICAgaWYgKGJ1Zi5sZW5ndGggPiAwKSB7CiAgICAgIGZzLndyaXRlRmlsZVN5bmMoJ2pvYi1hdWRpby5tcDMnLCBidWYpOwogICAgICBhdWRpb0FyZyA9IFsnLS1hdWRpbycsICdqb2ItYXVkaW8ubXAzJ107CiAgICAgIGNvbnNvbGUubG9nKCdVc2luZyB1c2VyLXByb3ZpZGVkIGF1ZGlvICgnICsgYnVmLmxlbmd0aCArICcgYnl0ZXMpJyk7CiAgICB9CiAgfQogIGlmIChhdWRpb0FyZy5sZW5ndGggPT09IDApIGNvbnNvbGUubG9nKCdObyB1c2VyIGF1ZGlvIOKAlCB1c2luZyBzY2VuZS1iYXNlZCBzb3VuZCBlZmZlY3RzJyk7CgogIGNvbnNvbGUubG9nKGBSZW5kZXJpbmcgJHtkdXJhdGlvbn1zIGF0IDE5MjB4MTA4MC4uLmApOwogIGNvbnN0IHIgPSBzcGF3blN5bmMoJ25vZGUnLCBbCiAgICAnY29udmVydC5tanMnLCAnLS1pbnB1dCcsICdqb2IuaHRtbCcsICctLW91dHB1dCcsICdqb2IubXA0JywKICAgICctLWR1cmF0aW9uJywgU3RyaW5nKGR1cmF0aW9uKSwgJy0tZnBzJywgJzMwJywKICAgICctLXdpZHRoJywgJzE5MjAnLCAnLS1oZWlnaHQnLCAnMTA4MCcsIC4uLmF1ZGlvQXJnLAogIF0sIHsgc3RkaW86ICdpbmhlcml0JyB9KTsKICBpZiAoci5zdGF0dXMgIT09IDApIHRocm93IG5ldyBFcnJvcignY29udmVydCBmYWlsZWQnKTsKCiAgY29uc3QgZm9ybSA9IG5ldyBGb3JtRGF0YSgpOwogIGZvcm0uYXBwZW5kKCd2aWRlbycsIG5ldyBCbG9iKFtmcy5yZWFkRmlsZVN5bmMoJ2pvYi5tcDQnKV0sIHsgdHlwZTogJ3ZpZGVvL21wNCcgfSksICdqb2IubXA0Jyk7CiAgY29uc3QgdXAgPSBhd2FpdCBmZXRjaChgJHtXT1JLRVJ9L2pvYi8ke2pvYi5pZH0vcmVzdWx0YCwgeyBtZXRob2Q6ICdQT1NUJywgYm9keTogZm9ybSwgaGVhZGVyczogSEVBREVSUyB9KTsKICBpZiAoIXVwLm9rKSB0aHJvdyBuZXcgRXJyb3IoJ3Jlc3VsdCB1cGxvYWQgZmFpbGVkOiAnICsgdXAuc3RhdHVzKTsKICBjb25zdCBudCA9IGF3YWl0IGZldGNoKGAke1dPUktFUn0vam9iLyR7am9iLmlkfS9ub3RpZnlgLCB7IG1ldGhvZDogJ1BPU1QnLCBoZWFkZXJzOiBIRUFERVJTIH0pOwogIGNvbnNvbGUubG9nKCdOb3RpZmllZCB3b3JrZXI6JywgbnQuc3RhdHVzKTsKICBjb25zb2xlLmxvZygnRG9uZTonLCBqb2IuaWQpOwp9CgptYWluKCkuY2F0Y2goKGUpID0+IHsgY29uc29sZS5lcnJvcihlKTsgcHJvY2Vzcy5leGl0KDEpOyB9KTsK
+// Job runner: picks ONE queued job from the Cloudflare Worker, renders it
+// at 1920x1080 with sound effects, and uploads the MP4 back.
+// Runs on GitHub Actions (cron every 5 min) — free for public repos.
+// Can also run locally for testing: node render-job.mjs
+import fs from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+
+const WORKER = process.env.WORKER_URL || 'https://html-to-video-bot.1ravixo.workers.dev';
+// workers.dev blocks some non-browser user agents (e.g. Python urllib),
+// so identify as a browser on every request.
+const HEADERS = { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' };
+
+async function main() {
+  const queueRes = await fetch(`${WORKER}/queue`, { headers: HEADERS });
+  if (!queueRes.ok) throw new Error('queue fetch failed: ' + queueRes.status);
+  const queue = await queueRes.json();
+  const job = (queue.jobs || []).find((j) => j.status === 'queued');
+  if (!job) {
+    console.log('No queued jobs.');
+    return;
+  }
+  console.log('Claiming job', job.id);
+  const claim = await fetch(`${WORKER}/job/${job.id}/claim`, { method: 'POST', headers: HEADERS });
+  if (!claim.ok) {
+    console.log('Claim failed (already taken?):', claim.status);
+    return;
+  }
+  const meta = await (await fetch(`${WORKER}/job/${job.id}`, { headers: HEADERS })).json();
+  const duration = meta.duration || 5;
+
+  const html = await (await fetch(`${WORKER}/job/${job.id}/html`, { headers: HEADERS })).text();
+  fs.writeFileSync('job.html', html);
+
+  // Sound: user-provided audio if the job has one. Otherwise convert.mjs
+  // builds sound effects from the scene itself (thuds, whooshes, pops —
+  // matched to the movements and events in the animation). No music, no speech.
+  let audioArg = [];
+  const audioRes = await fetch(`${WORKER}/job/${job.id}/audio`, { headers: HEADERS });
+  if (audioRes.ok) {
+    const buf = Buffer.from(await audioRes.arrayBuffer());
+    if (buf.length > 0) {
+      fs.writeFileSync('job-audio.mp3', buf);
+      audioArg = ['--audio', 'job-audio.mp3'];
+      console.log('Using user-provided audio (' + buf.length + ' bytes)');
+    }
+  }
+  if (audioArg.length === 0) console.log('No user audio — using scene-based sound effects');
+
+  console.log(`Rendering ${duration}s at 1920x1080...`);
+  const r = spawnSync('node', [
+    'convert.mjs', '--input', 'job.html', '--output', 'job.mp4',
+    '--duration', String(duration), '--fps', '30',
+    '--width', '1920', '--height', '1080', ...audioArg,
+  ], { stdio: 'inherit' });
+  if (r.status !== 0) throw new Error('convert failed');
+
+  const form = new FormData();
+  form.append('video', new Blob([fs.readFileSync('job.mp4')], { type: 'video/mp4' }), 'job.mp4');
+  const up = await fetch(`${WORKER}/job/${job.id}/result`, { method: 'POST', body: form, headers: HEADERS });
+  if (!up.ok) throw new Error('result upload failed: ' + up.status);
+  const nt = await fetch(`${WORKER}/job/${job.id}/notify`, { method: 'POST', headers: HEADERS });
+  console.log('Notified worker:', nt.status);
+  console.log('Done:', job.id);
+}
+
+main().catch((e) => { console.error(e); process.exit(1); });
