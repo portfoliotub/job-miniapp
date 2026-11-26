@@ -1,9 +1,16 @@
 #!/usr/bin/env node
 // html-to-video — converts an HTML file (with CSS/JS animations) to MP4.
-// Method: headless Chrome renders the page frame by frame (animations are
-// paused and seeked to each frame's exact time), screenshots are piped to
-// FFmpeg, which encodes them as H.264 MP4. No dropped frames, no screen
-// recording — the output is pixel-perfect for the given time.
+// Two capture modes:
+//  - seek (default for CSS/Web Animations pages): headless Chrome renders
+//    the page frame by frame (animations are paused and seeked to each
+//    frame's exact time), screenshots are piped to FFmpeg. Pixel-perfect.
+//  - realtime (screen recording, auto-selected when the page uses GSAP):
+//    GSAP timelines run on GSAP's own clock in real time and cannot be
+//    seeked, so the page is screen-recorded with a CDP screencast while it
+//    plays for exactly `duration` seconds, then the frames are encoded.
+//    This is the only correct way to capture GSAP (and other rAF-driven)
+//    animations — the seek mode would squeeze the whole timeline into the
+//    first seconds of the video.
 //
 // Usage:
 //   node convert.mjs --input page.html --output video.mp4 --duration 5 --fps 30
@@ -18,6 +25,7 @@
 //   --wait      ms to wait after page load before rendering (default: 1000)
 //   --audio     sound file to mix in (overrides auto sound effects)
 //   --sfx       auto|off — scene-based sound effects (default: auto)
+//   --mode      auto|seek|realtime (default: auto — realtime if window.gsap exists)
 //
 // Sound effects: by default the converter watches the page's animations and
 // builds a matching soundtrack — a thud where something bounces, a whoosh
@@ -44,6 +52,7 @@ const width = Number(opt('--width', '1280'));
 const height = Number(opt('--height', '720'));
 const waitMs = Number(opt('--wait', '1000'));
 const sfxMode = opt('--sfx', 'auto');
+const modeOpt = opt('--mode', 'auto');
 let audio = opt('--audio');
 if (audio && !fs.existsSync(path.resolve(audio))) {
   console.error(`Audio file not found: ${audio}`);
@@ -243,6 +252,47 @@ function buildSfxTrack(events, duration, outPath) {
   return outPath;
 }
 
+// Realtime capture ("screen recording") for GSAP / rAF-driven pages.
+// The page is reloaded so its timeline restarts, then recorded with a CDP
+// screencast while it plays for exactly `duration` seconds. The collected
+// frames (timestamped by the compositor) are resampled to `fps` and piped
+// to FFmpeg as JPEGs. Returns after the encode input is fully written.
+async function captureRealtime(page, fileUrl, duration, fps, totalFrames, ffmpeg) {
+  const client = await page.createCDPSession();
+  const collected = []; // { ts (seconds), data (Buffer) }, time-ordered
+  const onFrame = (ev) => {
+    collected.push({ ts: ev.metadata.timestamp, data: Buffer.from(ev.data, 'base64') });
+    client.send('Page.screencastFrameAck', { sessionId: ev.sessionId }).catch(() => {});
+  };
+  client.on('Page.screencastFrame', onFrame);
+  try {
+    await client.send('Page.startScreencast', { format: 'jpeg', quality: 80, everyNthFrame: 1 });
+    // Reload so the page's timeline starts at capture start.
+    await page.goto(fileUrl, { waitUntil: 'load', timeout: 30000 });
+    collected.length = 0; // drop pre-reload frames
+    const until = Date.now() + duration * 1000 + 500;
+    while (Date.now() < until) await new Promise((r) => setTimeout(r, 100));
+    await client.send('Page.stopScreencast');
+  } finally {
+    client.off('Page.screencastFrame', onFrame);
+  }
+  if (collected.length < 2) throw new Error('screencast produced no frames');
+  const t0 = collected[0].ts;
+  for (let i = 0; i < totalFrames; i++) {
+    const target = t0 + i / fps;
+    let best = collected[0];
+    for (const f of collected) {
+      if (Math.abs(f.ts - target) < Math.abs(best.ts - target)) best = f;
+      if (f.ts > target + 0.05) break; // frames are time-ordered
+    }
+    if (!ffmpeg.stdin.write(best.data)) await new Promise((r) => ffmpeg.stdin.once('drain', r));
+    if ((i + 1) % 30 === 0 || i === totalFrames - 1) {
+      process.stdout.write(`\rFrame ${i + 1}/${totalFrames}`);
+    }
+  }
+  console.log(`\nRealtime capture: ${collected.length} screencast frames, ${totalFrames} used (${duration}s @ ${fps}fps)`);
+}
+
 if (!input) {
   console.error('Usage: node convert.mjs --input page.html [--output video.mp4] [--duration 5] [--fps 30] [--width 1280] [--height 720]');
   process.exit(2);
@@ -291,12 +341,17 @@ try {
   }
 
   // Freeze the page clock: pause every CSS / Web Animations API animation.
-  const animCount = await page.evaluate(() => {
+  // GSAP pages are different: GSAP runs its own real-time ticker, so the
+  // page cannot be scrubbed — it must be screen-recorded while it plays.
+  const isGsap = await page.evaluate(() => !!window.gsap);
+  const useRealtime = modeOpt === 'realtime' || (modeOpt === 'auto' && isGsap);
+  console.log(`Mode: ${useRealtime ? 'realtime (screen recording)' : 'seek'}${isGsap ? ' — GSAP detected' : ''}`);
+  const animCount = useRealtime ? 0 : await page.evaluate(() => {
     const anims = document.getAnimations();
     anims.forEach((a) => a.pause());
     return anims.length;
   });
-  console.log(`Animations found: ${animCount} — rendering ${totalFrames} frames (${duration}s @ ${fps}fps, ${width}x${height})`);
+  if (!useRealtime) console.log(`Animations found: ${animCount} — rendering ${totalFrames} frames (${duration}s @ ${fps}fps, ${width}x${height})`);
 
   const ffArgs = ['-y', '-f', 'image2pipe', '-framerate', String(fps), '-i', '-'];
   if (audio) ffArgs.push('-i', path.resolve(audio));
@@ -311,18 +366,22 @@ try {
     ffmpeg.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited with code ${code}\n${ffmpegErr.slice(-2000)}`))));
   });
 
-  for (let i = 0; i < totalFrames; i++) {
-    const t = (i / fps) * 1000;
-    await page.evaluate((ms) => {
-      document.getAnimations().forEach((a) => { a.currentTime = ms; });
-    }, t);
-    const shot = await page.screenshot({ type: 'png' });
-    if (!ffmpeg.stdin.write(shot)) await new Promise((r) => ffmpeg.stdin.once('drain', r));
-    if ((i + 1) % 30 === 0 || i === totalFrames - 1) {
-      process.stdout.write(`\rFrame ${i + 1}/${totalFrames}`);
+  if (useRealtime) {
+    await captureRealtime(page, fileUrl, duration, fps, totalFrames, ffmpeg);
+  } else {
+    for (let i = 0; i < totalFrames; i++) {
+      const t = (i / fps) * 1000;
+      await page.evaluate((ms) => {
+        document.getAnimations().forEach((a) => { a.currentTime = ms; });
+      }, t);
+      const shot = await page.screenshot({ type: 'png' });
+      if (!ffmpeg.stdin.write(shot)) await new Promise((r) => ffmpeg.stdin.once('drain', r));
+      if ((i + 1) % 30 === 0 || i === totalFrames - 1) {
+        process.stdout.write(`\rFrame ${i + 1}/${totalFrames}`);
+      }
     }
+    console.log('');
   }
-  console.log('');
   ffmpeg.stdin.end();
   await ffmpegDone;
 
