@@ -6,7 +6,7 @@ The Cloudflare Worker (`html-to-video-bot`) takes HTML from Telegram and queues 
 
 ## Output
 
-- **1920x1080, 30 fps, H.264 MP4**, up to 10 seconds
+- **1920x1080, 30 fps, H.264 MP4**, up to 20 seconds
 - **Sound effects matched to the scene** — no background music, no speech. The converter watches the page's animations and builds a soundtrack from what actually happens: a thud where something bounces or lands, a whoosh where something moves fast, a pop where something appears, a rising sweep where a bar fills. If the job includes user audio it is used as the soundtrack instead. HTML authors can force a sound with `data-sfx="pop|whoosh|thud|ding|swish|sweep"` on any element (optionally `data-sfx-time="1.2"` in seconds).
 
 ## Capture modes
