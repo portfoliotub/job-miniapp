@@ -6,8 +6,15 @@ The Cloudflare Worker (`html-to-video-bot`) takes HTML from Telegram and queues 
 
 ## Output
 
-- **1920x1080, 30 fps, H.264 MP4**, up to 5 seconds
+- **1920x1080, 30 fps, H.264 MP4**, up to 10 seconds
 - **Sound effects matched to the scene** — no background music, no speech. The converter watches the page's animations and builds a soundtrack from what actually happens: a thud where something bounces or lands, a whoosh where something moves fast, a pop where something appears, a rising sweep where a bar fills. If the job includes user audio it is used as the soundtrack instead. HTML authors can force a sound with `data-sfx="pop|whoosh|thud|ding|swish|sweep"` on any element (optionally `data-sfx-time="1.2"` in seconds).
+
+## Capture modes
+
+`convert.mjs` picks the mode automatically (`--mode auto|seek|realtime` to override):
+
+- **seek** — for CSS / Web Animations pages: animations are paused and scrubbed frame by frame. Pixel-perfect.
+- **realtime** ("screen recording") — auto-selected when the page uses GSAP (`window.gsap`). GSAP timelines run on GSAP's own real-time clock and cannot be scrubbed, so the page is recorded with a CDP screencast while it plays for exactly the video duration. Note: scene sound effects are not auto-detected for GSAP pages (only `data-sfx` attributes work); use `--audio` or `data-sfx` for sound there.
 
 ## Files
 
