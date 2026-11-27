@@ -4984,8 +4984,7 @@ function renderEmployerProfile() {
     '<div class="meta" style="text-align:center;padding:0 14px 14px;">' + esc(hint) + "</div>" +
     "</div>" +
     '<div class="row-btns profile-actions"><button class="btn" type="button" id="emp-my-jobs">آگهی‌های من</button>' +
-    '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>' +
-    (ph.source === "manual" ? '<div class="row-btns"><button class="btn btn-danger" type="button" id="emp-photo-remove">حذف عکس پروفایل</button></div>' : "");
+    '<button class="btn" type="button" id="switch-role">تغییر نقش</button></div>';
   // v26: a dead photo URL falls back to the letter avatar.
   const photoImg = viewEl().querySelector(".avatar-photo");
   if (photoImg) photoImg.addEventListener("error", function () { photoImg.remove(); });
@@ -5026,13 +5025,6 @@ function renderEmployerProfile() {
     saveEmployerName("");
     state.empNameEditing = false; render();
     showToast("اسم به اسم تلگرام برگشت");
-  });
-  const removeBtn = document.getElementById("emp-photo-remove");
-  if (removeBtn) removeBtn.addEventListener("click", function () {
-    saveEmployerPhoto("");
-    requestPhotoUpdate("employer", ""); // v114: clear the photo for everyone too
-    render();
-    showToast("عکس پروفایل حذف شد");
   });
   document.getElementById("emp-my-jobs").addEventListener("click", function () { switchTab("my-jobs"); });
   document.getElementById("switch-role").addEventListener("click", function () { showWelcome(); });
