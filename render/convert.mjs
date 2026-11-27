@@ -4,13 +4,15 @@
 //  - seek (default for CSS/Web Animations pages): headless Chrome renders
 //    the page frame by frame (animations are paused and seeked to each
 //    frame's exact time), screenshots are piped to FFmpeg. Pixel-perfect.
-//  - realtime (screen recording, auto-selected when the page uses GSAP):
-//    GSAP timelines run on GSAP's own clock in real time and cannot be
-//    seeked, so the page is screen-recorded with a CDP screencast while it
-//    plays for exactly `duration` seconds, then the frames are encoded.
-//    This is the only correct way to capture GSAP (and other rAF-driven)
-//    animations — the seek mode would squeeze the whole timeline into the
-//    first seconds of the video.
+//  - realtime (screen recording, auto-selected for GSAP and other
+//    real-time JS animation loops): GSAP timelines and raw
+//    requestAnimationFrame / setInterval loops run on the browser's
+//    real-time clock and cannot be seeked, so the page is screen-recorded
+//    with a CDP screencast while it plays for exactly `duration` seconds,
+//    then the frames are encoded. This is the only correct way to capture
+//    them — the seek mode would squeeze the whole timeline into the first
+//    seconds of the video (the page keeps playing in real time while
+//    frames are captured one by one, so the video comes out ~2x too fast).
 //
 // Usage:
 //   node convert.mjs --input page.html --output video.mp4 --duration 5 --fps 30
@@ -25,7 +27,8 @@
 //   --wait      ms to wait after page load before rendering (default: 1000)
 //   --audio     sound file to mix in (overrides auto sound effects)
 //   --sfx       auto|off — scene-based sound effects (default: auto)
-//   --mode      auto|seek|realtime (default: auto — realtime if window.gsap exists)
+//   --mode      auto|seek|realtime (default: auto — realtime for GSAP or
+//               for pages with a continuous rAF / setInterval animation loop)
 //
 // Sound effects: by default the converter watches the page's animations and
 // builds a matching soundtrack — a thud where something bounces, a whoosh
@@ -319,8 +322,30 @@ let sfxPath = null;
 try {
   const page = await browser.newPage();
   await page.setViewport({ width, height });
+  // Probe for real-time JS animation loops: wrap requestAnimationFrame and
+  // setInterval (before any page script runs) and count how often the page
+  // actually drives animation with them. A page with a continuous rAF loop
+  // (GSAP, Anime.js, Lottie, raw rAF) or a fast setInterval loop cannot be
+  // scrubbed — it must be screen-recorded in real time. The wrapper is
+  // transparent: it just counts, then calls the original.
+  await page.evaluateOnNewDocument(() => {
+    window.__museRafCount = 0;
+    window.__museIntervalCount = 0;
+    const origRaf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (cb) => origRaf((ts) => {
+      window.__museRafCount++;
+      cb(ts);
+    });
+    const origSi = window.setInterval.bind(window);
+    window.setInterval = (fn, ms, ...rest) => origSi((...a) => {
+      window.__museIntervalCount++;
+      fn(...a);
+    }, ms, ...rest);
+  });
   await page.goto(fileUrl, { waitUntil: 'load', timeout: 30000 });
-  await new Promise((r) => setTimeout(r, waitMs));
+  // The probe needs about a second of observation after load (the page's
+  // loop only starts once its scripts run), so never wait less than 1s.
+  await new Promise((r) => setTimeout(r, Math.max(waitMs, 1000)));
 
   // Scene-based sound effects (unless the user supplied audio or disabled
   // them): detect what the animations do, synthesize matching sounds.
@@ -343,9 +368,23 @@ try {
   // Freeze the page clock: pause every CSS / Web Animations API animation.
   // GSAP pages are different: GSAP runs its own real-time ticker, so the
   // page cannot be scrubbed — it must be screen-recorded while it plays.
-  const isGsap = await page.evaluate(() => !!window.gsap);
-  const useRealtime = modeOpt === 'realtime' || (modeOpt === 'auto' && isGsap);
-  console.log(`Mode: ${useRealtime ? 'realtime (screen recording)' : 'seek'}${isGsap ? ' — GSAP detected' : ''}`);
+  // The same holds for any page whose animation is driven by a continuous
+  // requestAnimationFrame loop or a fast setInterval loop (the page clock
+  // advances in wall time, so seek mode would record it ~2x too fast).
+  // The probe installed before load counted those callbacks during the
+  // observation window after load: a real loop fires dozens of times per
+  // second, a one-off call fires once or twice.
+  const probe = await page.evaluate(() => ({
+    gsap: !!window.gsap,
+    raf: window.__museRafCount || 0,
+    interval: window.__museIntervalCount || 0,
+  }));
+  const realtimeReason = probe.gsap ? 'GSAP detected'
+    : probe.raf >= 10 ? `rAF animation loop (${probe.raf} callbacks/s)`
+    : probe.interval >= 5 ? `setInterval animation loop (${probe.interval} callbacks/s)`
+    : null;
+  const useRealtime = modeOpt === 'realtime' || (modeOpt === 'auto' && realtimeReason !== null);
+  console.log(`Mode: ${useRealtime ? 'realtime (screen recording)' : 'seek'}${realtimeReason ? ' — ' + realtimeReason : ''}`);
   const animCount = useRealtime ? 0 : await page.evaluate(() => {
     const anims = document.getAnimations();
     anims.forEach((a) => a.pause());
