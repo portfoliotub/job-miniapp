@@ -14,7 +14,7 @@ The Cloudflare Worker (`html-to-video-bot`) takes HTML from Telegram and queues 
 `convert.mjs` picks the mode automatically (`--mode auto|seek|realtime` to override):
 
 - **seek** — for CSS / Web Animations pages: animations are paused and scrubbed frame by frame. Pixel-perfect.
-- **realtime** ("screen recording") — auto-selected when the page uses GSAP (`window.gsap`). GSAP timelines run on GSAP's own real-time clock and cannot be scrubbed, so the page is recorded with a CDP screencast while it plays for exactly the video duration. Note: scene sound effects are not auto-detected for GSAP pages (only `data-sfx` attributes work); use `--audio` or `data-sfx` for sound there.
+- **realtime** ("screen recording") — auto-selected for GSAP pages (`window.gsap`) and for any page with a continuous `requestAnimationFrame` or fast `setInterval` animation loop. Those animations run on the browser's real-time clock and cannot be scrubbed, so the page is recorded with a CDP screencast while it plays for exactly the video duration. Note: scene sound effects are not auto-detected for such pages (only `data-sfx` attributes work); use `--audio` or `data-sfx` for sound there.
 
 ## Files
 
